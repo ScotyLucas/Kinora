@@ -1936,8 +1936,11 @@ async function viewPlayer(id, q) {
     if (mode === 'direct') {
       video.src = r.url;
       video.addEventListener('loadedmetadata', () => { if (startAt > 0) video.currentTime = startAt; }, { once: true });
-    } else if (window.Hls && Hls.isSupported()) {
-      hls = new Hls({ maxBufferLength: 30, backBufferLength: 60, startPosition: 0, manifestLoadingMaxRetry: 6, levelLoadingMaxRetry: 6, fragLoadingMaxRetry: 6 });
+    } else if (window.Hls && Hls.isSupported() && (window.MediaSource || !video.canPlayType('application/vnd.apple.mpegurl'))) {
+      // Safari's ManagedMediaSource lets the browser pause loading ("endstreaming") and it does not always resume it,
+      // so playback stopped at the end of the first ~80 s; classic MediaSource keeps hls.js in charge. Where only
+      // ManagedMediaSource exists (iPhone) the native HLS player below is used instead.
+      hls = new Hls({ maxBufferLength: 30, backBufferLength: 60, startPosition: 0, manifestLoadingMaxRetry: 6, levelLoadingMaxRetry: 6, fragLoadingMaxRetry: 6, preferManagedMediaSource: !window.MediaSource });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return; }
@@ -2210,8 +2213,22 @@ async function viewPlayer(id, q) {
     lastPosState = Date.now();
     try { ms.setPositionState({ duration, position: Math.min(duration, Math.max(0, pos())), playbackRate: video.playbackRate || 1 }); } catch { /* ignore */ }
   }
-  video.addEventListener('waiting', () => { put(mid, spinner); party?.buffering(true); });
-  video.addEventListener('playing', () => { if (mid.firstChild === spinner) put(mid); party?.buffering(false); });
+  // a stall that lasts while the playlist still has more to load: kick hls.js (buffering resumed, loading restarted here)
+  let stallT = null;
+  const unstall = () => { clearTimeout(stallT); stallT = null; };
+  video.addEventListener('waiting', () => {
+    put(mid, spinner); party?.buffering(true);
+    unstall();
+    if (!hls) return;
+    const h0 = hls;
+    stallT = setTimeout(() => {
+      if (h0 !== hls || video.paused || video.readyState >= 3 || dead) return;
+      console.warn('kinora: playback stalled, restarting loading at', video.currentTime);
+      if (hls.resumeBuffering) hls.resumeBuffering();
+      hls.startLoad(video.currentTime);
+    }, 4000);
+  });
+  video.addEventListener('playing', () => { unstall(); if (mid.firstChild === spinner) put(mid); party?.buffering(false); });
   video.addEventListener('canplay', () => { if (mid.firstChild === spinner && !video.paused) put(mid); party?.buffering(false); });
   video.addEventListener('loadeddata', () => { if (video.paused && mid.firstChild === spinner) put(mid); });
   video.addEventListener('timeupdate', () => {

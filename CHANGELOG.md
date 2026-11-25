@@ -5,6 +5,16 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.6 – 2026-11-25
+
+- **Javítás (webes lejátszó, Safari):** a lejátszás kb. 80 másodpercenként megállt. Nem a szerver volt a hiba: a
+  Safari „takarékos” lejátszási módja (ManagedMediaSource) leállította a videó további letöltését, és nem indította
+  újra. A webes lejátszó most a hagyományos módot használja, és ha a kép mégis 4 másodpercnél tovább áll, magától
+  újraindítja a töltést.
+- **Fix (web player, Safari):** playback stopped about every 80 seconds. The server was not at fault: Safari's
+  ManagedMediaSource paused loading and never resumed it. The web player now uses classic MediaSource, and restarts
+  loading by itself when playback stalls for more than 4 seconds.
+
 ## 1.1.5 – 2026-11-24
 
 - **Javítás (Windows):** a lejátszás 1.1.4-gyel is megállt kb. másfél perc után. Windowson az ffmpeg már nem
