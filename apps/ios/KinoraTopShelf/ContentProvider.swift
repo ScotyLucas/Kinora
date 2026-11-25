@@ -64,7 +64,7 @@ struct Shelf: Codable, Sendable {
             let item = TVTopShelfSectionedItem(identifier: "\(resume ? "r" : "n")\(c.id)")
             item.title = c.title
             item.imageShape = .poster
-            if let name = c.image, let dir = Self.directory {
+            if let name = c.image, let dir = Self.images {
                 item.setImageURL(dir.appending(path: name), for: [.screenScale1x, .screenScale2x])
             }
             if let p = c.progress, p > 0 { item.playbackProgress = min(1, p) }
@@ -91,7 +91,7 @@ struct Shelf: Codable, Sendable {
             if data == nil { data = try? await client.image(item.id, episode ? .thumb : .backdrop) }
             let name = "poster-\(item.id).jpg"
             var stored: String?
-            if let data, let dir = directory {
+            if let data, let dir = images {
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 if (try? data.write(to: dir.appending(path: name), options: .atomic)) != nil { stored = name }
             }
@@ -102,18 +102,26 @@ struct Shelf: Codable, Sendable {
 
     // MARK: - storage
 
-    // Not Library/Caches: tvOS empties caches often, and then a server that cannot be reached
-    // (or a session without a chosen profile, which home refuses) leaves the shelf empty.
+    // The shelf itself is not kept in Library/Caches: tvOS empties caches often, and then a server
+    // that cannot be reached (or a session without a chosen profile) leaves the shelf empty.
     static var directory: URL? { AppGroup.container?.appending(path: "Library/Application Support/TopShelf") }
+    // The posters stay in Library/Caches: the home screen loads them from there, not from
+    // Application Support. Every refresh fetches them again.
+    static var images: URL? { AppGroup.container?.appending(path: "Library/Caches/TopShelf") }
 
     func save() {
         guard let dir = Self.directory else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? JSONEncoder().encode(self).write(to: dir.appending(path: "shelf.json"), options: .atomic)
-        // Drop images of titles that left the shelf.
-        let keep = Set((resume + recent).compactMap(\.image) + ["shelf.json"])
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: dir.path())) ?? [] where !keep.contains(name) {
+        // Posters the previous build stored next to the shelf.
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: dir.path())) ?? [] where name != "shelf.json" {
             try? FileManager.default.removeItem(at: dir.appending(path: name))
+        }
+        // Drop images of titles that left the shelf.
+        guard let images = Self.images else { return }
+        let keep = Set((resume + recent).compactMap(\.image))
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: images.path())) ?? [] where !keep.contains(name) {
+            try? FileManager.default.removeItem(at: images.appending(path: name))
         }
     }
 
