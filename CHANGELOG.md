@@ -5,6 +5,14 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Javítás (iOS, elrendezés):** fekvő iPhone-on a watch party panel már nem tolja ki a lejátszót a képernyőről
+  (a QR-kód alapból rejtve, a csevegés görgethető), iPad-ablakban a lejátszó bezárógombja és a kezdőlap logója nem
+  kerül az ablakvezérlők alá, a részletek borítóképe legfeljebb a képernyő felét foglalja, és fekvő telefonon
+  a telefonos méretek maradnak.
+- **Fix (iOS, layout):** on a landscape iPhone the watch party panel no longer pushes the player off screen (the QR
+  code is hidden by default, the chat scrolls); in an iPad window the player's close button and the home logo stay
+  clear of the window controls; the detail hero takes at most half the screen; a landscape phone keeps phone sizes.
+
 ## 1.1.7 – 2026-11-25
 
 - **Újdonság (iOS, tvOS):** fiókváltás egy szerveren belül. Több fiók maradhat bejelentkezve ugyanazon az eszközön, és

@@ -10,6 +10,8 @@ struct ItemDetailView: View {
     var item: Item
 
     @State private var detail: ItemDetail?
+    /// Height of the visible page: caps the hero picture in a wide window.
+    @State private var viewportHeight: CGFloat = 0
     @State private var userData = UserData()
     @State private var error: String?
     @State private var season: Int?
@@ -68,6 +70,7 @@ struct ItemDetailView: View {
         } message: {
             Text(notice?.message ?? "")
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
         .sheet(item: $subSearch) { SubtitleSearchView(item: $0) }
         .sheet(item: $langsFor) { TitleLangsSheet(item: $0) }
         .kinoraScreen()
@@ -80,7 +83,7 @@ struct ItemDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 0) {
             ArtworkView(item: current, kind: current.kind == .episode ? .thumb : .backdrop)
-                .heroFrame(metrics.heroRatio(16 / 9), compactHeight: vSize == .compact)
+                .heroFrame(metrics.heroRatio(16 / 9), compactHeight: vSize == .compact, maxHeight: viewportHeight / 2)
                 .overlay {
                     LinearGradient(colors: [.clear, Theme.black], startPoint: .center, endPoint: .bottom)
                 }

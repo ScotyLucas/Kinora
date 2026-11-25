@@ -95,8 +95,9 @@ private enum Placeholder {
 
 // MARK: - layout metrics
 
-/// Sizes that follow the width: a phone (compact) or an iPad (regular). In iPad Split View
-/// or Slide Over the width turns compact, and the phone sizes come back on their own.
+/// Sizes that follow the window: a phone (compact) or an iPad (regular). In a narrow iPad window
+/// the width turns compact, and on a big phone in landscape the height does: the phone sizes
+/// come back on their own in both.
 struct Metrics: Equatable {
     var regular: Bool
 
@@ -123,7 +124,7 @@ struct Metrics: Equatable {
 extension EnvironmentValues {
     var metrics: Metrics {
         #if os(iOS)
-        Metrics(regular: horizontalSizeClass == .regular)
+        Metrics(regular: horizontalSizeClass == .regular && verticalSizeClass != .compact)
         #else
         Metrics(regular: true)
         #endif
@@ -350,14 +351,43 @@ extension View {
     }
 }
 
+/// Full width at `ratio`, but never taller than `maxHeight`.
+private struct HeroLayout: Layout {
+    var ratio: CGFloat
+    var maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? maxHeight * ratio
+        return CGSize(width: width, height: min(width / ratio, maxHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for view in subviews { view.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size)) }
+    }
+}
+
 extension View {
     /// Wide artwork at its own ratio; on a phone in landscape a short strip instead,
     /// so the title and play button stay on screen.
-    @ViewBuilder func heroFrame(_ ratio: CGFloat, compactHeight: Bool) -> some View {
+    /// `maxHeight` keeps a wide window's artwork from pushing the title and buttons below the fold:
+    /// past it the picture is cropped instead of growing.
+    @ViewBuilder func heroFrame(_ ratio: CGFloat, compactHeight: Bool, maxHeight: CGFloat? = nil) -> some View {
         if compactHeight {
             frame(maxWidth: .infinity).frame(height: 170).clipped()
+        } else if let maxHeight, maxHeight > 0 {
+            HeroLayout(ratio: ratio, maxHeight: maxHeight) { self }.clipped()
         } else {
             aspectRatio(ratio, contentMode: .fit).frame(maxWidth: .infinity)
+        }
+    }
+
+    /// A bar that runs along the top of a window: in an iPad window its leading end makes room for
+    /// the window controls (close, minimize, tile), which would otherwise cover it and take its taps.
+    @ViewBuilder func clearOfWindowControls() -> some View {
+        if #available(iOS 26.0, *) {
+            containerCornerOffset(.leading, sizeToFit: true)
+        } else {
+            self
         }
     }
 }

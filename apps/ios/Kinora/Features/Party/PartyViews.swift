@@ -9,9 +9,11 @@ struct PartyPanel: View {
     var leave: () -> Void
     @State private var message = ""
     @FocusState private var typing: Bool
-    /// The QR code is shown: by default while nobody else is in the room yet.
+    @Environment(\.verticalSizeClass) private var vSize
+    /// The QR code is shown: by default while nobody else is in the room yet, unless the screen is short
+    /// (a phone in landscape), where it would leave no room for the chat.
     @State private var qr: Bool?
-    private var showQR: Bool { qr ?? (party.members.count <= 1) }
+    private var showQR: Bool { qr ?? (party.members.count <= 1 && vSize != .compact) }
     /// The chat line waiting for "report?" confirmation, and the person waiting for "block?".
     @State private var reporting: PartySession.Line?
     @State private var blocking: PartySession.Line?
@@ -19,18 +21,13 @@ struct PartyPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            if showQR { qrCard }
-            if let s = party.status {
-                Text(s).font(.caption).foregroundStyle(Theme.amber)
-            }
-            members
-            Divider().overlay(Theme.rule)
-            chat
+            roomAndChat
             reactions
             composer
         }
         .padding(14)
-        .frame(width: 320)
+        // Never wider than the screen, and never taller: the panel must not push the player off it.
+        .frame(maxWidth: 320)
         .frame(maxHeight: .infinity)
         .background(.ultraThinMaterial.opacity(0.95), in: .rect(cornerRadius: 18))
         .environment(\.colorScheme, .dark)
@@ -121,36 +118,70 @@ struct PartyPanel: View {
         }
     }
 
-    private var chat: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    if party.visibleLines.contains(where: party.isOthers) {
-                        Text(L("Tarts nyomva egy üzenetet a jelentéshez vagy a küldő letiltásához."))
-                            .font(.caption2).foregroundStyle(Theme.muted)
-                    }
-                    ForEach(party.visibleLines) { line in
-                        Group {
-                            if let name = line.name {
-                                Text("\(Text(name + ": ").bold().foregroundColor(Color(partyHex: line.color ?? ""))))\(line.text)")
-                            } else {
-                                Text(line.text).italic().foregroundStyle(Theme.muted)
-                            }
-                        }
-                        .font(.footnote)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .contextMenu { lineActions(line) }
-                        .accessibilityActions { lineActions(line) }
-                        .id(line.id)
+    private var room: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if showQR { qrCard }
+            if let s = party.status {
+                Text(s).font(.caption).foregroundStyle(Theme.amber)
+            }
+            members
+            Divider().overlay(Theme.rule)
+        }
+    }
+
+    /// A scroll view that follows the newest chat line.
+    private func followingChat<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        let content = content()
+        return ScrollViewReader { proxy in
+            ScrollView { content }
+                .scrollBounceBehavior(.basedOnSize)
+                .onChange(of: party.visibleLines.last?.id) { _, id in
+                    if let id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } }
+                }
+        }
+    }
+
+    private var chatLines: some View {
+        LazyVStack(alignment: .leading, spacing: 6) {
+            if party.visibleLines.contains(where: party.isOthers) {
+                Text(L("Tarts nyomva egy üzenetet a jelentéshez vagy a küldő letiltásához."))
+                    .font(.caption2).foregroundStyle(Theme.muted)
+            }
+            ForEach(party.visibleLines) { line in
+                Group {
+                    if let name = line.name {
+                        Text("\(Text(name + ": ").bold().foregroundColor(Color(partyHex: line.color ?? ""))))\(line.text)")
+                    } else {
+                        Text(line.text).italic().foregroundStyle(Theme.muted)
                     }
                 }
-            }
-            .onChange(of: party.visibleLines.last?.id) { _, id in
-                if let id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } }
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .contextMenu { lineActions(line) }
+                .accessibilityActions { lineActions(line) }
+                .id(line.id)
             }
         }
-        .frame(maxHeight: .infinity)
+    }
+
+    /// QR code, status, members and the chat. When they fit, the chat alone scrolls and takes the room
+    /// that is left; on a short screen (a phone in landscape, a low window) all of it scrolls together.
+    private var roomAndChat: some View {
+        ViewThatFits(in: .vertical) {
+            VStack(alignment: .leading, spacing: 12) {
+                room
+                followingChat { chatLines }
+                    .frame(minHeight: 120, idealHeight: 120, maxHeight: .infinity)
+            }
+            followingChat {
+                VStack(alignment: .leading, spacing: 12) {
+                    room
+                    chatLines
+                }
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
         .confirmationDialog(L("Jelented ezt az üzenetet?"), isPresented: Binding(get: { reporting != nil }, set: { if !$0 { reporting = nil } }),
                             titleVisibility: .visible, presenting: reporting) { line in
             Button(L("Jelentés"), role: .destructive) { Haptic.select.play(); party.report(line) }

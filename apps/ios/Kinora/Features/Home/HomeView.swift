@@ -117,6 +117,7 @@ struct HomeTab: View {
         }
         .padding(.horizontal, metrics.gutter)
         .padding(.vertical, 8)
+        .clearOfWindowControls()
         .background(Theme.black.opacity(0.92))
     }
 
