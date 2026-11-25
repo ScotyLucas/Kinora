@@ -719,6 +719,18 @@ struct TVSettingsTab: View {
                         Button { model.switchProfile() } label: { Label(L("Profilváltás"), systemImage: "person.2") }
                             .buttonStyle(TVRowStyle())
                     }
+                    if model.canSwitchAccount {
+                        ForEach(model.accounts) { a in
+                            Button { Task { await model.switchAccount(to: a) } } label: {
+                                Label(L("Fiókváltás: {0}", a.username), systemImage: "person.crop.circle")
+                            }
+                            .buttonStyle(TVRowStyle())
+                        }
+                        Button { Task { await model.addAccount() } } label: {
+                            Label(L("Fiók hozzáadása"), systemImage: "person.crop.circle.badge.plus")
+                        }
+                        .buttonStyle(TVRowStyle())
+                    }
                     Button { model.showServers() } label: { Label(L("Másik szerver"), systemImage: "server.rack") }
                         .buttonStyle(TVRowStyle())
                     NavigationLink { TVHomeScenesView() } label: { Label(L("Otthon-jelenetek"), systemImage: "house") }

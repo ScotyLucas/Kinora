@@ -33,8 +33,10 @@ struct ProfilesView: View {
                     ProgressView()
                 }
                 ErrorText(message: error)
+                ParkedAccountsList(busy: busy)
                 // Profiles belong to one account; another family member signs in with their own.
-                Button { Task { await model.logout() } } label: {
+                // This one stays signed in, so it can come back without a password.
+                Button { Task { await model.addAccount() } } label: {
                     Label(L("Másik felhasználó"), systemImage: "person.crop.circle.badge.plus")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.plaster)

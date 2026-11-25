@@ -56,6 +56,8 @@ struct SettingsView: View {
                 }
                 .listRowBackground(Theme.panel)
 
+                AccountsSection()
+
                 Section {
                     NavigationLink { ServerSettingsView() } label: {
                         SettingsRow(model.me?.serverName ?? model.server?.name ?? L("Szerver"), icon: "server.rack",

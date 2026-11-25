@@ -27,8 +27,8 @@ public struct SavedServer: Codable, Sendable, Equatable, Identifiable, Hashable 
 /// Saved servers (UserDefaults) and their tokens (Keychain).
 /// `ServerStore.shared()` puts both in the App Group, so the widgets see them too.
 public final class ServerStore: @unchecked Sendable {
-    private let defaults: UserDefaults
-    private let keychain: Keychain
+    let defaults: UserDefaults
+    let keychain: Keychain
     private let listKey = "kinora.servers"
     private let currentKey = "kinora.current"
 
@@ -70,6 +70,7 @@ public final class ServerStore: @unchecked Sendable {
     public func remove(_ id: String) {
         save(servers.filter { $0.id != id })
         keychain.delete(account: id)
+        forgetAccounts(server: id)
         if currentID == id { currentID = nil }
     }
 

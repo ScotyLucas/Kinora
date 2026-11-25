@@ -34,6 +34,8 @@ final class AppModel {
     private(set) var server: SavedServer?
     private(set) var status: ServerStatus?
     private(set) var me: Me? { didSet { meChanged() } }
+    /// The other accounts of this server signed in on this device, the last used first.
+    private(set) var accounts: [SavedAccount] = []
     /// The profile shown on the offline screen (the last one used with this server).
     private(set) var offlineProfile: Profile?
     /// A message shown once on the next screen (e.g. "session expired").
@@ -231,6 +233,7 @@ final class AppModel {
         }
         client = c
         me = nil
+        refreshAccounts()
         Task { await syncLanguages(c) }
         #if os(iOS)
         DownloadStore.shared.attach(c)
@@ -294,6 +297,13 @@ final class AppModel {
         server = s
         await client?.setToken(token)
         try? await loadMe()
+        // A fresh sign-in to an unlocked session opens the account switch again.
+        if let me, me.profileLocked != true { store.setSwitchLocked(false, server: s.id) }
+        // Signed in again to an account that was parked: the new session replaces the old one.
+        if let user = me?.user, let old = store.parkedAccounts(for: s.id).first(where: { $0.userId == user.id }) {
+            await forgetAccount(old)
+        }
+        refreshAccounts()
         reloadWidgets()
     }
 
@@ -358,11 +368,130 @@ final class AppModel {
         #endif
         await client?.setToken(nil)
         me = nil
-        screen = .login
         #if os(iOS)
         Spotlight.clear()
         #endif
+        // Like the web: another account signed in on this device takes over.
+        // Not after a session locked to one profile: the parked accounts stay closed then.
+        if canSwitchAccount, let next = store.parkedAccounts(for: server.id).first {
+            await switchAccount(to: next)
+            return
+        }
+        screen = .login
         reloadWidgets()
+    }
+
+    // MARK: - accounts
+
+    /// Switching accounts is refused on a device locked to one profile, as on the server.
+    /// The lock is remembered past that session's sign-out, so leaving it does not open the others.
+    var canSwitchAccount: Bool {
+        guard me?.profileLocked != true else { return false }
+        return !(server.map { store.isSwitchLocked(server: $0.id) } ?? false)
+    }
+
+    /// Empty while the switch is locked: the parked accounts are not offered then.
+    private func refreshAccounts() {
+        guard let server, !store.isSwitchLocked(server: server.id) else { accounts = []; return }
+        accounts = store.parkedAccounts(for: server.id)
+    }
+
+
+    /// Keeps the active account signed in, set aside, and opens the login for another one.
+    func addAccount() async {
+        guard canSwitchAccount else { return await logout() }
+        guard await parkCurrent() else { notice = L("A fiókot most nem lehet félretenni, mert a szerver nem érhető el. Próbáld újra később."); return }
+        server?.username = nil // the login form starts empty, not with the parked account's name
+        screen = .login
+        reloadWidgets()
+    }
+
+    /// Makes a parked account the active one, without a password.
+    func switchAccount(to account: SavedAccount) async {
+        guard canSwitchAccount, var saved = server else { return }
+        guard await parkCurrent() else { notice = L("A fiókot most nem lehet félretenni, mert a szerver nem érhető el. Próbáld újra később."); return }
+        guard let token = store.unpark(account.userId, server: saved.id) else {
+            server?.username = account.username
+            refreshAccounts()
+            notice = L("Ennek a fióknak lejárt a munkamenete. Lépj be újra.")
+            screen = .login
+            return
+        }
+        store.setToken(token, for: saved.id)
+        await client?.setToken(token)
+        // Saved before `me` loads, so an offline moment does not leave the server nameless.
+        saved.username = account.username
+        saved.lastUsed = .now
+        store.upsert(saved)
+        servers = store.servers
+        server = servers.first { $0.id == saved.id } ?? saved
+        refreshAccounts()
+        do {
+            try await loadMe()
+        } catch KinoraError.unauthorized {
+            // Signed out elsewhere (or the session expired): sign in again with that name.
+            store.setToken(nil, for: saved.id)
+            await client?.setToken(nil)
+            server?.username = account.username
+            notice = L("Ennek a fióknak lejárt a munkamenete. Lépj be újra.")
+            screen = .login
+            reloadWidgets()
+            return
+        } catch {
+            // Offline for a moment: the picker loads `me` again when it appears.
+            screen = .profiles
+            reloadWidgets()
+            return
+        }
+        if let name = me?.user.username, name != saved.username {
+            saved.username = name
+            store.upsert(saved)
+            servers = store.servers
+            server = servers.first { $0.id == saved.id } ?? saved
+        }
+        reloadWidgets()
+        if let profiles = me?.profiles, profiles.count == 1, !profiles[0].hasPin,
+           (try? await selectProfile(profiles[0], pin: nil)) != nil { return }
+        screen = .profiles
+    }
+
+    /// Forgets a parked account: signs it out on the server, and drops its token here.
+    func forgetAccount(_ account: SavedAccount) async {
+        guard let saved = server else { return }
+        if let token = store.unpark(account.userId, server: saved.id) {
+            await KinoraClient(server: saved, token: token).logout()
+        }
+        refreshAccounts()
+    }
+
+    /// Sets the active account aside (still signed in) and leaves its screens.
+    /// Returns false, and changes nothing, when the account cannot be told apart from the others
+    /// because the server does not answer: dropping its token then would strand its session.
+    /// Nothing to park (already signed out) counts as done.
+    private func parkCurrent() async -> Bool {
+        guard let saved = server, let token = store.token(for: saved.id) else { return true }
+        if me == nil { try? await loadMe() }
+        guard me?.user != nil else { return false }
+        settingsVisible = false
+        player?.close()
+        homePath = NavigationPath()
+        tab = .home
+        #if os(iOS)
+        // The push pairing belongs to the active account; the next one pairs again on home.
+        await PushManager.shared.signedOut(saved, client: client)
+        Spotlight.clear()
+        #endif
+        if let user = me?.user, store.park(token, user: user, server: saved.id) {
+            // Back to "who's watching?" when it comes back, like a fresh sign-in.
+            if me?.profile != nil { try? await client?.leaveProfile() }
+        } else {
+            await client?.logout() // could not keep it: do not leave a session nobody can reach
+        }
+        store.setToken(nil, for: saved.id)
+        await client?.setToken(nil)
+        me = nil
+        refreshAccounts()
+        return true
     }
 
     // MARK: - settings
@@ -399,6 +528,7 @@ final class AppModel {
             #endif
         }
         me = nil
+        refreshAccounts()
         notice = KinoraError.unauthorized.errorDescription
         screen = .login
         reloadWidgets()
@@ -541,6 +671,12 @@ final class AppModel {
     /// Downloads belong to profiles: the download store follows the profile in use, and the last one is kept
     /// per server, so the app can start without a connection on that profile's downloads.
     private func meChanged() {
+        // A session locked to one profile closes the account switch on this device until
+        // a fresh sign-in to an unlocked session (see `ServerStore.isSwitchLocked`).
+        if me?.profileLocked == true, let id = server?.id, !store.isSwitchLocked(server: id) {
+            store.setSwitchLocked(true, server: id)
+            refreshAccounts()
+        }
         #if os(iOS)
         guard let me else { return } // between servers: the store keeps the last profile until the next one
         DownloadStore.shared.use(profile: me.profile)

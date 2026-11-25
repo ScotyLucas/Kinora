@@ -311,6 +311,12 @@ struct AccountMenu: View {
             Button(L("Beállítások"), systemImage: "gearshape") { model.settingsVisible = true }
             if model.me?.profileLocked != true {
                 Button(L("Profilváltás"), systemImage: "person.2") { model.switchProfile() }
+                Menu(L("Fiókváltás"), systemImage: "person.crop.circle") {
+                    ForEach(model.accounts) { a in
+                        Button(a.username, systemImage: "person.crop.circle") { Task { await model.switchAccount(to: a) } }
+                    }
+                    Button(L("Fiók hozzáadása"), systemImage: "person.crop.circle.badge.plus") { Task { await model.addAccount() } }
+                }
             }
             Button(L("Másik szerver"), systemImage: "server.rack") { model.showServers() }
             Button(L("Kijelentkezés"), systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {

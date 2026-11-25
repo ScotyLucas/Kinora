@@ -190,6 +190,10 @@ struct TVLoginView: View {
                     .buttonStyle(TVPillStyle())
                 if busy { ProgressView() }
             }
+            if !model.accounts.isEmpty {
+                TVHeading(text: L("Bejelentkezve ezen az eszközön")).padding(.top, 20)
+                TVParkedAccounts()
+            }
         }
         .onAppear { username = model.server?.username ?? "" }
     }
@@ -295,6 +299,33 @@ struct TVQuickConnectView: View {
     }
 }
 
+// MARK: - accounts
+
+/// The other accounts of this server signed in on this Apple TV: one click brings one back,
+/// without a password.
+struct TVParkedAccounts: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if !model.accounts.isEmpty {
+            TVButtonRow {
+                ForEach(model.accounts) { a in
+                    Button { Task { await model.switchAccount(to: a) } } label: {
+                        Label(a.username, systemImage: "person.crop.circle")
+                    }
+                    .buttonStyle(TVPillStyle())
+                    .accessibilityLabel(L("Fiókváltás"))
+                    .accessibilityValue(a.username)
+                    .contextMenu {
+                        Button(L("Elfelejtés"), role: .destructive) { Task { await model.forgetAccount(a) } }
+                    }
+                }
+            }
+            .focusSection()
+        }
+    }
+}
+
 // MARK: - profiles
 
 struct TVProfilesView: View {
@@ -321,9 +352,11 @@ struct TVProfilesView: View {
                 ProgressView()
             }
             TVErrorText(message: error)
+            TVParkedAccounts()
             HStack(spacing: 40) {
                 // Profiles belong to one account; another family member signs in with their own.
-                Button(L("Másik felhasználó")) { Task { await model.logout() } }
+                // This one stays signed in, so it can come back without a password.
+                Button(L("Másik felhasználó")) { Task { await model.addAccount() } }
                     .buttonStyle(TVPillStyle())
                 Button(L("Másik szerver")) { model.showServers() }
                     .buttonStyle(TVPillStyle())

@@ -5,6 +5,16 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.7 – 2026-11-25
+
+- **Újdonság (iOS, tvOS):** fiókváltás egy szerveren belül. Több fiók maradhat bejelentkezve ugyanazon az eszközön, és
+  jelszó nélkül válthatsz köztük: iPhone-on a fiókmenüből és a Beállítások → Fiókok részből, Apple TV-n a
+  Beállításokból. A „Másik felhasználó” gomb már nem jelentkeztet ki, kijelentkezés után pedig a következő
+  megjegyzett fiók veszi át az eszközt.
+- **New (iOS, tvOS):** switching accounts within a server. Several accounts can stay signed in on one device and you
+  switch without a password: on iPhone from the account menu and Settings → Accounts, on Apple TV from Settings.
+  "Switch user" no longer signs you out, and after signing out the next remembered account takes over.
+
 ## 1.1.6 – 2026-11-25
 
 - **Javítás (webes lejátszó, Safari):** a lejátszás kb. 80 másodpercenként megállt. Nem a szerver volt a hiba: a
