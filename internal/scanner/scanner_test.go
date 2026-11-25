@@ -391,3 +391,43 @@ func TestSameTmdbShowIsOneCard(t *testing.T) {
 		t.Errorf("rescan: series = %d, changed = %d", n, s3.Changed)
 	}
 }
+
+// A re-scan of a file (a new subtitle, a migration clearing sidecar_sig) must not wipe the
+// artwork TMDB downloaded for a matched item, while an unmatched item still follows its folder.
+func TestRescanKeepsOnlineArtwork(t *testing.T) {
+	st, sc, media := setup(t)
+	ctx := context.Background()
+	lib, _ := st.CreateLibrary("Filmek", filepath.Join(media, "Movies"), "movies")
+	if _, err := sc.ScanNow(ctx, lib.ID); err != nil {
+		t.Fatal(err)
+	}
+	var matched, plain int64
+	st.DB.QueryRow(`SELECT id FROM items WHERE kind='movie' AND path LIKE '%Kids.Cartoon%'`).Scan(&matched)
+	st.DB.QueryRow(`SELECT id FROM items WHERE kind='movie' AND path LIKE '%Space.Drama%'`).Scan(&plain)
+	if matched == 0 || plain == 0 {
+		t.Fatal("test movies not found")
+	}
+	for _, id := range []int64{matched, plain} {
+		dir := ImageDir(sc.imgDir, id)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "poster.jpg"), []byte("jpg"), 0o644)
+		os.WriteFile(filepath.Join(dir, "backdrop.jpg"), []byte("jpg"), 0o644)
+		st.SetImageFlags(id, true, true)
+	}
+	st.DB.Exec(`UPDATE items SET tmdb_id=42 WHERE id=?`, matched)
+	st.DB.Exec(`UPDATE items SET tmdb_id=NULL WHERE id=?`, plain)
+	st.DB.Exec(`UPDATE items SET sidecar_sig='' WHERE kind='movie'`)
+	if _, err := sc.ScanNow(ctx, lib.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if p, b := st.ImageFlags(matched); !p || !b {
+		t.Fatalf("matched item lost its TMDB artwork: poster=%v backdrop=%v", p, b)
+	}
+	if _, err := os.Stat(filepath.Join(ImageDir(sc.imgDir, matched), "poster.jpg")); err != nil {
+		t.Fatal("matched item's poster.jpg was deleted")
+	}
+	if p, _ := st.ImageFlags(plain); p {
+		t.Fatal("unmatched item kept a poster its folder no longer has")
+	}
+}

@@ -308,6 +308,11 @@ type target struct {
 // appliedLangKey stores the metadata language every matched item was last fetched in.
 const appliedLangKey = "metadata_lang_applied"
 
+// artworkRepairKey marks the one-time pass that re-fetches matched items left without artwork:
+// a re-scan of a file used to delete the TMDB poster and backdrop of items that have none next
+// to the video, and the hearing-impaired subtitle migration re-scanned many files at once.
+const artworkRepairKey = "tmdb_artwork_repaired"
+
 // relangNeeded returns the configured metadata language when matched items still carry another one.
 // Databases from before this key existed were filled with the default (Hungarian) language.
 func (f *Fetcher) relangNeeded() string {
@@ -395,6 +400,10 @@ func (f *Fetcher) refresh(ctx context.Context, retryNoMatch bool) error {
 	if relang != "" {
 		cond = "(" + cond + " OR tmdb_id>0)" // manual / NFO items (-1) are never touched
 	}
+	repair := relang == "" && f.st.Setting(artworkRepairKey) == ""
+	if repair {
+		cond = "(" + cond + " OR (tmdb_id>0 AND has_poster=0 AND has_backdrop=0))"
+	}
 	rows, err := f.st.DB.Query(`SELECT id,library_id,kind,title,COALESCE(year,0),COALESCE(tmdb_id,0) FROM items WHERE kind IN ('movie','series') AND missing=0 AND ` + cond)
 	if err != nil {
 		return err
@@ -448,6 +457,11 @@ func (f *Fetcher) refresh(ctx context.Context, retryNoMatch bool) error {
 			return err
 		}
 		f.st.ClearGenreLabels() // they map the old language's genre names
+	}
+	if repair {
+		if err := f.st.SetSetting(artworkRepairKey, "1"); err != nil {
+			return err
+		}
 	}
 	f.log.Info("tmdb refresh finished", "items", len(ts))
 	return nil

@@ -348,6 +348,15 @@ func (s *Store) SetImageFlags(id int64, poster, backdrop bool) error {
 	return err
 }
 
+// HasOnlineMatch reports whether an item, or the series it belongs to, is matched on TMDB:
+// its artwork may then come from TMDB rather than from files next to the video.
+func (s *Store) HasOnlineMatch(id int64) bool {
+	var ok bool
+	s.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM items i LEFT JOIN items sr ON sr.id=i.series_id
+		WHERE i.id=? AND (i.tmdb_id>0 OR sr.tmdb_id>0))`, id).Scan(&ok)
+	return ok
+}
+
 // ImageFlags returns the stored artwork flags.
 func (s *Store) ImageFlags(id int64) (poster, backdrop bool) {
 	s.DB.QueryRow(`SELECT has_poster,has_backdrop FROM items WHERE id=?`, id).Scan(&poster, &backdrop)

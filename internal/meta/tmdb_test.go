@@ -307,3 +307,49 @@ func TestViewerLanguage(t *testing.T) {
 		t.Fatalf("episode unknown to TMDB is asked for again (%v)", err)
 	}
 }
+
+// Matched items left without artwork get it back once; later refreshes leave them alone.
+func TestRefreshRepairsLostArtworkOnce(t *testing.T) {
+	var details atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/3/movie/5", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("append_to_response") != "" { // not the IMDb id backfill
+			details.Add(1)
+		}
+		w.Write([]byte(`{"id":5,"title":"Örökség","release_date":"2018-06-08","poster_path":"/p.jpg","backdrop_path":"/b.jpg"}`))
+	})
+	mux.HandleFunc("/img/", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("jpg")) })
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	st, err := store.Open(filepath.Join(t.TempDir(), "k.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	st.SetSetting("tmdb_key", "k123")
+	lib, _ := st.CreateLibrary("x", "/x", "movies")
+	res, err := st.DB.Exec(`INSERT INTO items(library_id,kind,key,title,sort_title,year,tmdb_id,added_at,updated_at) VALUES(?,?,?,?,?,?,?,0,0)`,
+		lib.ID, "movie", "m", "Hereditary", "Hereditary", 2018, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := res.LastInsertId()
+
+	imgs := t.TempDir()
+	f := New(st, imgs, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	f.BaseURL, f.ImageURL, f.Delay = ts.URL+"/3", ts.URL+"/img/", 0
+	if err := f.Refresh(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if p, b := st.ImageFlags(id); !p || !b {
+		t.Fatalf("artwork not repaired: poster=%v backdrop=%v", p, b)
+	}
+	st.SetImageFlags(id, false, false)
+	if err := f.Refresh(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if n := details.Load(); n != 1 {
+		t.Fatalf("the repair must run once, details fetched %d times", n)
+	}
+}

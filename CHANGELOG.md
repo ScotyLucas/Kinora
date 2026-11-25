@@ -18,6 +18,12 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
   könyvtáradból, a buborékra koppintva a többiek a Kinorában csatlakoznak, és 12 mozis matrica is jár hozzá.
 - **New (iOS):** Kinora in Messages. From the iMessage app you send watch party invites and recommendations from your
   library, the others join in Kinora by tapping the bubble, and 12 movie-night stickers come with it.
+- **Javítás (borítók):** ha a szerver újra feldolgozott egy filmfájlt (új felirat, újraolvasott beágyazott feliratok),
+  törölte a TMDB-ről letöltött borítót és hátteret, ha a mappában nem volt saját kép, és azok nem is jöttek vissza.
+  Az újraszkennelés most megtartja őket, és a frissítés utáni első metaadat-frissítés egyszer pótolja a hiányzókat.
+- **Fix (posters):** re-processing a movie file (a new subtitle, re-read embedded subtitles) deleted the poster and
+  backdrop downloaded from TMDB when the folder had no artwork of its own, and they never came back. Re-scans now keep
+  them, and the first metadata refresh after updating restores the missing ones once.
 
 ## 1.1.6 – 2026-11-25
 

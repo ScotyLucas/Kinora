@@ -791,6 +791,14 @@ func (sc *Scanner) storeArtwork(ctx context.Context, id int64, poster, backdrop 
 			sc.log.Warn("backdrop", "src", backdrop, "err", err)
 		}
 	}
+	// No local file: on a TMDB-matched item the artwork already there came from TMDB.
+	// Keep it, or a re-scan (a new subtitle, a schema migration) wipes it for good, since
+	// the metadata refresh does not visit matched items again.
+	if (!hasP || !hasB) && sc.st.HasOnlineMatch(id) {
+		oldP, oldB := sc.st.ImageFlags(id)
+		hasP = hasP || (poster == "" && oldP)
+		hasB = hasB || (backdrop == "" && oldB)
+	}
 	if !hasP {
 		os.Remove(filepath.Join(dir, "poster.jpg"))
 	}
