@@ -14,6 +14,10 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 - **New (iOS, tvOS):** switching accounts within a server. Several accounts can stay signed in on one device and you
   switch without a password: on iPhone from the account menu and Settings → Accounts, on Apple TV from Settings.
   "Switch user" no longer signs you out, and after signing out the next remembered account takes over.
+- **Újdonság (iOS):** Kinora az Üzenetekben. Az iMessage-appból watch party-meghívót és ajánlást küldhetsz a
+  könyvtáradból, a buborékra koppintva a többiek a Kinorában csatlakoznak, és 12 mozis matrica is jár hozzá.
+- **New (iOS):** Kinora in Messages. From the iMessage app you send watch party invites and recommendations from your
+  library, the others join in Kinora by tapping the bubble, and 12 movie-night stickers come with it.
 
 ## 1.1.6 – 2026-11-25
 

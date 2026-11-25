@@ -32,6 +32,7 @@ targets:
       - package: KinoraKit
       - target: KinoraWidgets
       - target: KinoraNotifications
+      - target: KinoraMessages
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(KINORA_BUNDLE_ID)
@@ -126,6 +127,44 @@ targets:
         KinoraAppGroup: group.$(KINORA_BUNDLE_ID)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+  # The iMessage app: watch party invites, title recommendations and stickers.
+  KinoraMessages:
+    type: app-extension.messages
+    platform: iOS
+    sources:
+      - path: KinoraMessages
+      # The foyer palette and buttons, shared with the app.
+      - Kinora/App/Theme.swift
+    dependencies:
+      - package: KinoraKit
+      - sdk: Messages.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(KINORA_BUNDLE_ID).messages
+        PRODUCT_NAME: KinoraMessages
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: iMessage App Icon
+    # The App Group carries the login (ServerStore.shared) and the downloaded language.
+    entitlements:
+      path: KinoraMessages/KinoraMessages.entitlements
+      properties:
+        com.apple.security.application-groups: [group.$(KINORA_BUNDLE_ID)]
+    info:
+      path: KinoraMessages/Info.plist
+      properties:
+        CFBundleDisplayName: Kinora
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: hu
+        KinoraAppGroup: group.$(KINORA_BUNDLE_ID)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.message-payload-provider
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).MessagesViewController
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
   # Decrypts the push notifications the relay forwards and adds the poster.

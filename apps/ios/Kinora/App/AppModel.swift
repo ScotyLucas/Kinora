@@ -751,6 +751,12 @@ final class AppModel {
         guard let link = KinoraLink(url: url) else { return }
         pendingLink = link
         pendingStart = nil
+        #if os(iOS)
+        // An invite from Messages names its server (kinora://party/ABC234?server=<id>): run it there.
+        if let serverId = KinoraLink.serverId(in: url), screen != .launching || store.currentID != serverId {
+            return goToServer(serverId, elsewhere: L("Ez a meghívó egy másik Kinora-szerverre szól, amelyre ezen az eszközön nem vagy bejelentkezve."))
+        }
+        #endif
         handlePendingLink()
     }
 
