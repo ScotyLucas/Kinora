@@ -204,6 +204,7 @@
   "jEmptyHint": "Was du zu Ende schaust (oder als gesehen markierst), erscheint hier.",
   "jMinutes": {"one": "{0} Minute", "other": "{0} Minuten"},
   "jVs": {"month": "Die Pfeile vergleichen mit denselben Tagen im Vormonat.", "year": "Die Pfeile vergleichen mit diesem Zeitpunkt im Vorjahr.", "last": "Die Pfeile vergleichen mit dem Jahr davor."},
+  "jVsFail": "Der Zeitraum davor ließ sich gerade nicht laden, daher fehlen die Pfeile.",
   "jGoal": "Jahresziel",
   "jGoalSet": "Jahresziel festlegen",
   "jGoalFilms": "Wie viele Filme möchtest du dieses Jahr sehen?",

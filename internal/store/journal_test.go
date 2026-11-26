@@ -51,3 +51,16 @@ func TestJournalRecordsViewings(t *testing.T) {
 		t.Fatalf("another profile sees it: %+v", other)
 	}
 }
+
+func TestJournalRecapSeen(t *testing.T) {
+	f := fixture(t)
+	if err := f.s.SetJournalRecapSeen(f.p.ID, "2026-10"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := f.s.Profile(f.p.ID); p.JournalRecapSeen != "2026-10" {
+		t.Fatalf("recap seen: %q", p.JournalRecapSeen)
+	}
+	if k, _ := f.s.Profile(f.kid.ID); k.JournalRecapSeen != "" {
+		t.Fatalf("another profile got it: %q", k.JournalRecapSeen)
+	}
+}

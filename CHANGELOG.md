@@ -5,6 +5,17 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.92 – 2026-11-26
+
+- **Javítva (web, iPhone, iPad):** Napló: egyforma plakátok hosszú címnél is, szélesebb idővonal-sávok, halvány és nem
+  kattintható jövőbeli napok, telefonon a kiválasztott napnál nyíló idővonal, nézésszám a hét napjainál, akadálymentes
+  évösszegző (fókusz, Tab, visszalapozás az utolsó oldalról), percben mutatott kis időeltérés, megjegyzés, ha az
+  összehasonlítás nem tölthető be, és minden eszközön egyszerre eltűnő havi kártya. „Mindig” helyett „Kezdettől”.
+- **Fixed (web, iPhone, iPad):** Journal: even posters with long titles, wider timeline bars, faint days still ahead that
+  cannot be pressed, the timeline opening at the chosen day on phones, viewing counts on the weekdays, an accessible year
+  in review (focus, Tab, stepping back from the last page), small time differences in minutes, a note when the comparison
+  cannot be loaded, and the monthly card closing on every device at once.
+
 ## 1.1.91 – 2026-11-26
 
 - **Újdonság (iPhone, iPad):** megújult widgetek: hátralévő idő, ✓ gomb a közepes Folytatáson is és azonnali

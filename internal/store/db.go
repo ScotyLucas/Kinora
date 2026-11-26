@@ -626,6 +626,8 @@ INSERT INTO watch_events(profile_id,item_id,series_id,kind,title,series_title,se
   WHERE u.played=1 AND u.last_played_at IS NOT NULL AND i.kind IN ('movie','episode');`,
 	// the Napló's yearly goal: how many films the profile means to watch in a year (0 = no goal)
 	`ALTER TABLE profiles ADD COLUMN journal_goal INTEGER NOT NULL DEFAULT 0;`,
+	// the month (YYYY-MM) whose recap card the profile has closed, on every device at once
+	`ALTER TABLE profiles ADD COLUMN journal_recap_seen TEXT NOT NULL DEFAULT '';`,
 }
 
 // ErrNewerSchema: the database was written by a newer Kinora (after rolling back an update, for example).

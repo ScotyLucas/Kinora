@@ -92,3 +92,9 @@ func intPtr(n sql.NullInt64) *int {
 	v := int(n.Int64)
 	return &v
 }
+
+// SetJournalRecapSeen records that the profile closed (or opened) the recap card of a month (YYYY-MM).
+func (s *Store) SetJournalRecapSeen(profileID int64, month string) error {
+	_, err := s.DB.Exec(`UPDATE profiles SET journal_recap_seen=? WHERE id=?`, month, profileID)
+	return err
+}

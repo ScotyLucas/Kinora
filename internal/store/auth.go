@@ -321,23 +321,24 @@ func (s *Store) PurgeSessions() {
 
 // Profile is a household member (Netflix-style).
 type Profile struct {
-	ID             int64  `json:"id"`
-	UserID         int64  `json:"user_id"`
-	Name           string `json:"name"`
-	Color          string `json:"color"`
-	HasPIN         bool   `json:"has_pin"`
-	IsKids         bool   `json:"is_kids"`
-	MaxRatingLevel *int   `json:"max_rating_level"`
-	SubLangs       string `json:"sub_langs"`
-	AudioLangs     string `json:"audio_langs"`
-	SubMode        string `json:"sub_mode"`
-	AutoplayNext   bool   `json:"autoplay_next"`
-	MaxBitrate     int    `json:"max_bitrate"`
-	SkipIntro      string `json:"skip_intro"`   // manual | auto | off
-	Snow           bool   `json:"snow"`         // snowflakes fall on the screens outside the player
-	JournalGoal    int    `json:"journal_goal"` // films the profile means to watch in a year (0 = no goal)
-	CreatedAt      int64  `json:"created_at"`
-	pinHash        string
+	ID               int64  `json:"id"`
+	UserID           int64  `json:"user_id"`
+	Name             string `json:"name"`
+	Color            string `json:"color"`
+	HasPIN           bool   `json:"has_pin"`
+	IsKids           bool   `json:"is_kids"`
+	MaxRatingLevel   *int   `json:"max_rating_level"`
+	SubLangs         string `json:"sub_langs"`
+	AudioLangs       string `json:"audio_langs"`
+	SubMode          string `json:"sub_mode"`
+	AutoplayNext     bool   `json:"autoplay_next"`
+	MaxBitrate       int    `json:"max_bitrate"`
+	SkipIntro        string `json:"skip_intro"`         // manual | auto | off
+	Snow             bool   `json:"snow"`               // snowflakes fall on the screens outside the player
+	JournalGoal      int    `json:"journal_goal"`       // films the profile means to watch in a year (0 = no goal)
+	JournalRecapSeen string `json:"journal_recap_seen"` // YYYY-MM: the last month whose recap card was closed
+	CreatedAt        int64  `json:"created_at"`
+	pinHash          string
 	// Libraries limits the profile to the account's allowed libraries (nil = all).
 	// Loaded with the profile from users.libraries, never sent to clients.
 	Libraries []int64 `json:"-"`
@@ -379,7 +380,7 @@ func (p *Profile) CheckPIN(pin string) bool {
 	return CheckPassword(p.pinHash, pin)
 }
 
-const profileCols = `id,user_id,name,color,COALESCE(pin_hash,''),is_kids,max_rating_level,sub_langs,audio_langs,sub_mode,autoplay_next,max_bitrate,skip_intro,snow,journal_goal,created_at,
+const profileCols = `id,user_id,name,color,COALESCE(pin_hash,''),is_kids,max_rating_level,sub_langs,audio_langs,sub_mode,autoplay_next,max_bitrate,skip_intro,snow,journal_goal,journal_recap_seen,created_at,
 	COALESCE((SELECT u.libraries FROM users u WHERE u.id=profiles.user_id AND u.is_admin=0),'')`
 
 func scanProfile(row interface{ Scan(...any) error }) (*Profile, error) {
@@ -387,7 +388,7 @@ func scanProfile(row interface{ Scan(...any) error }) (*Profile, error) {
 	var lvl sql.NullInt64
 	var libs string
 	if err := row.Scan(&p.ID, &p.UserID, &p.Name, &p.Color, &p.pinHash, &p.IsKids, &lvl,
-		&p.SubLangs, &p.AudioLangs, &p.SubMode, &p.AutoplayNext, &p.MaxBitrate, &p.SkipIntro, &p.Snow, &p.JournalGoal, &p.CreatedAt, &libs); err != nil {
+		&p.SubLangs, &p.AudioLangs, &p.SubMode, &p.AutoplayNext, &p.MaxBitrate, &p.SkipIntro, &p.Snow, &p.JournalGoal, &p.JournalRecapSeen, &p.CreatedAt, &libs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}

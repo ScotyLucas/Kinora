@@ -75,6 +75,11 @@ extension KinoraClient {
         let r: JournalResponse = try await get("/api/journal?from=\(Int64(from.timeIntervalSince1970))&to=\(Int64(to.timeIntervalSince1970))")
         return r.events
     }
+
+    /// Closes the home page's recap card of a month (YYYY-MM) on every device of the profile.
+    public func journalRecapSeen(month: String) async throws {
+        try await post("/api/journal/recap-seen", ["month": month])
+    }
 }
 
 /// The periods the Napló offers, and the bars of each one's timeline.

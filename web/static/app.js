@@ -1037,12 +1037,15 @@ async function viewHome() {
     onCleanup(() => clearTimeout(t));
   }
 }
-// the first week of a month: last month from the Napló in one line, once per profile and month until dismissed
+// the first week of a month: last month from the Napló in one line, once per profile and month until dismissed;
+// the server keeps the closed month, so the card goes on every device at once (the local key covers an older server)
 function monthRecapCard() {
   const now = new Date(), p = state.me.profile;
   if (now.getDate() > 7 || !p) return null;
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1), to = new Date(now.getFullYear(), now.getMonth(), 1);
   const key = `kinora.monthRecap.${p.id}.${from.getFullYear()}-${from.getMonth() + 1}`;
+  const ym = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}`;
+  if ((p.journal_recap_seen || '') >= ym) return null;
   try { if (localStorage.getItem(key)) return null; } catch { /* private mode: show it */ }
   const box = h('section.month-recap', { hidden: true, 'aria-label': T.journal });
   GET(`/api/journal?from=${Math.floor(from / 1000)}&to=${Math.floor(to / 1000)}`, { quiet: true }).then(r => {
@@ -1054,7 +1057,12 @@ function monthRecapCard() {
     const top = [...g].sort((a, b) => b[1] - a[1])[0];
     const month = from.toLocaleDateString(T.locale, { month: 'long' });
     const per = from.getFullYear() === now.getFullYear() ? 'year' : 'last';
-    const hide = () => { try { localStorage.setItem(key, '1'); } catch { /* ignore */ } box.remove(); };
+    const hide = () => {
+      try { localStorage.setItem(key, '1'); } catch { /* ignore */ }
+      p.journal_recap_seen = ym;
+      api('POST', '/api/journal/recap-seen', { month: ym }, { quiet: true }).catch(() => { /* the local key still hides it here */ });
+      box.remove();
+    };
     put(box,
       h('div.mr-body', null,
         h('p.mr-kick', null, T.mrTitle(month.charAt(0).toUpperCase() + month.slice(1))),
@@ -1845,13 +1853,16 @@ async function viewJournal(q) {
   const delta = (d, fmt = num) => pe && h('span.j-delta' + (d > 0 ? '.up' : d < 0 ? '.down' : ''), null,
     h('span', { 'aria-hidden': 'true' }, d > 0 ? '▲ ' : d < 0 ? '▼ ' : ''), (d > 0 ? '+' : d < 0 ? '−' : '±') + fmt(Math.abs(d)));
   const prevSecs = pe ? pe.reduce((a, e) => a + (e.runtime_sec || 0), 0) : 0;
+  // under an hour of difference shows in minutes, so a small change does not read as "±0 hours"
+  const timeDelta = d => Math.abs(d) < 3600 ? Math.round(d / 60) * 60 : Math.round(d / 3600) * 3600;
   const stat = (label, value, sub, d) => h('div.j-stat', null, h('dt', null, label), h('dd', null, h('b', null, value), d, sub && h('span.muted.small', null, sub)));
   main.append(h('dl.j-stats', null,
     stat(T.jFilms, num(films.length), '', delta(films.length - (pe || []).filter(e => e.kind === 'movie').length)),
     stat(T.jEpisodes, num(eps.length), shows ? T.jShows(shows) : '', delta(eps.length - (pe || []).filter(e => e.kind === 'episode').length)),
-    stat(T.jTime, T.jHours(Math.round(secs / 3600)), secs >= 86400 ? T.jDays(num(secs / 86400, 1)) : '', delta(Math.round((secs - prevSecs) / 3600), n => T.jHours(n))),
+    stat(T.jTime, T.jHours(Math.round(secs / 3600)), secs >= 86400 ? T.jDays(num(secs / 86400, 1)) : '', delta(timeDelta(secs - prevSecs), n => n < 3600 ? T.jMinutes(num(Math.round(n / 60))) : T.jHours(num(Math.round(n / 3600))))),
     topGenre && stat(T.jTopGenre, topGenre[0], T.jShare(Math.round(topGenre[1] / genreBase.length * 100)))));
   if (pe) main.append(h('p.muted.small.j-vs', null, T.jVs[per]));
+  else if (prevFrom && prev === null) main.append(h('p.muted.small.j-vs', null, T.jVsFail));
   if (per === 'year') main.append(goalBlock(films.length));
   if (per === 'year' || per === 'last') main.append(h('p.j-recap-open', null, h('button.btn.primary', { onclick: () => openRecap() }, '▶ ' + T.jRecap)));
 
@@ -1871,7 +1882,7 @@ async function viewJournal(q) {
   // ?b= picks the bucket to open with (the home page's monthly recap opens its month)
   const asked = q.get('b') != null && buckets.has(+q.get('b')) ? +q.get('b') : null;
   let sel = asked ?? [...buckets].reverse().find(([, b]) => b.length)[0];
-  const bars = h('div.j-bars', { style: { gridTemplateColumns: `repeat(${keys.length}, minmax(${unit === 'day' ? 14 : 28}px, 1fr))` } });
+  const bars = h('div.j-bars', { style: { gridTemplateColumns: `repeat(${keys.length}, minmax(${unit === 'day' ? 22 : 32}px, 1fr))` } });
   const showBucket = k => {
     sel = k;
     for (const b of bars.children) b.setAttribute('aria-pressed', String(b._k === k));
@@ -1887,15 +1898,23 @@ async function viewJournal(q) {
     const body = [art, h('div.cap', null, h('b', null, e.series_title || e.title), sub && h('span', null, sub), h('span.muted', null, when))];
     return e.item_id ? h('a.j-poster', { href: '#/item/' + e.item_id }, body) : h('div.j-poster', null, body);
   };
+  // days and months still ahead in this month or year: shown faint, not as empty bars to press
+  const ahead = k => (per === 'month' && unit === 'day' && k > now.getDate()) || (per === 'year' && unit === 'month' && k > M);
   for (const k of keys) {
     const n = buckets.get(k).length;
-    const b = h('button.j-bar', { type: 'button', 'aria-label': longLabel(k) + ': ' + T.jViewings(n), onclick: () => showBucket(k) },
+    const b = h('button.j-bar' + (ahead(k) ? '.ahead' : ''), { type: 'button', disabled: ahead(k), 'aria-label': longLabel(k) + ': ' + T.jViewings(n), onclick: () => showBucket(k) },
       h('i', { style: { height: (n ? Math.max(4, n / max * 100) : 0) + '%' } }), h('span', null, unit === 'day' && k % 5 !== 1 ? '' : label(k)));
     b._k = k;
     bars.append(b);
   }
-  main.append(h('section.j-sec', { 'aria-labelledby': 'j-tl' }, h('h2', { id: 'j-tl' }, T.jTimeline), h('div.scroll-x', null, bars), detail));
+  const track = h('div.scroll-x', null, bars);
+  main.append(h('section.j-sec', { 'aria-labelledby': 'j-tl' }, h('h2', { id: 'j-tl' }, T.jTimeline), track, detail));
   showBucket(sel);
+  // on a narrow screen the bars scroll sideways: start with the chosen one in view, not with the first day
+  requestAnimationFrame(() => {
+    const b = [...bars.children].find(x => x._k === sel);
+    if (b && track.scrollWidth > track.clientWidth) track.scrollLeft = Math.max(0, b.offsetLeft - bars.offsetLeft + b.offsetWidth / 2 - track.clientWidth / 2);
+  });
   if (asked != null) requestAnimationFrame(() => detail.scrollIntoView({ block: 'start', behavior: 'smooth' }));
 
   // genres, decades, when
@@ -1913,8 +1932,9 @@ async function viewJournal(q) {
     genres.length > 0 && h('section.j-sec', null, h('h2', null, T.genres), barList(genres.slice(0, 6))),
     decades.length > 0 && h('section.j-sec', null, h('h2', null, T.jDecades), barList(decades.slice(0, 6))),
     h('section.j-sec', null, h('h2', null, T.jWhen),
-      h('div.j-week', null, days.map((n, i) => h('div', { title: dayName(i) + ': ' + T.jViewings(n) },
-        h('i', { style: { opacity: n ? 0.25 + 0.75 * n / dMax : 0.08 } }), h('span', null, dayName(i))))),
+      h('ul.j-week', null, days.map((n, i) => h('li', { 'aria-label': new Date(2024, 0, 1 + i).toLocaleDateString(T.locale, { weekday: 'long' }) + ': ' + T.jViewings(n) },
+        h('i', { 'aria-hidden': 'true', style: { opacity: n ? 0.25 + 0.75 * n / dMax : 0.08 } }),
+        h('b', { 'aria-hidden': 'true' }, num(n)), h('span', { 'aria-hidden': 'true' }, dayName(i))))),
       h('ul.j-facts', null,
         h('li', null, T.jPeak(peak, (peak + 1) % 24)),
         h('li', null, T.jBusiest(new Date(2024, 0, 1 + busiest).toLocaleDateString(T.locale, { weekday: 'long' }))),
@@ -1978,9 +1998,27 @@ async function viewJournal(q) {
       [...bars.children].forEach((b, j) => b.classList.toggle('on', j <= i));
       box.classList.toggle('last', i === pages.length - 1);
     };
-    const key = e => { if (e.key === 'Escape') close(); else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); show(at + 1); } else if (e.key === 'ArrowLeft') show(at - 1); };
+    // keys while the story is open: Tab stays inside it, Space steps on unless it presses a button of the page itself
+    const key = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (e.key === 'Tab') {
+        const f = [...box.querySelectorAll('button, a[href]')].filter(el => el.offsetParent !== null);
+        if (!f.length) return;
+        const i = f.indexOf(document.activeElement);
+        if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+        return;
+      }
+      const own = e.target instanceof Element && e.target.closest('.jr-page a, .jr-page button');
+      if (e.key === 'ArrowRight' || (e.key === ' ' && !own)) { e.preventDefault(); show(at + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); show(at - 1); }
+    };
+    const opener = document.activeElement;
     let closed = false;
-    const close = () => { if (closed) return; closed = true; box.remove(); document.documentElement.style.overflow = ""; document.removeEventListener('keydown', key); };
+    const close = () => {
+      if (closed) return; closed = true; box.remove(); document.documentElement.style.overflow = ""; document.removeEventListener('keydown', key);
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
     onCleanup(close);
     document.addEventListener('keydown', key);
     document.body.append(box); document.documentElement.style.overflow = "hidden";

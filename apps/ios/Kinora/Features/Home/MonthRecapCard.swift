@@ -17,6 +17,7 @@ struct MonthRecapCard: View {
         var genre: String?
         var month: Date
         var key: String
+        var ym: String
     }
 
     var body: some View { card(recap) }
@@ -69,10 +70,12 @@ struct MonthRecapCard: View {
               let server = model.server?.id, let profile = model.me?.profile?.id else { return nil }
         let c = cal.dateComponents([.year, .month], from: prev)
         let key = "kinora.monthRecap.\(server).\(profile).\(c.year ?? 0)-\(c.month ?? 0)"
-        guard !UserDefaults.standard.bool(forKey: key),
+        let ym = String(format: "%04d-%02d", c.year ?? 0, c.month ?? 0)
+        // the server keeps the closed month for every device; the local key covers an older server
+        guard (model.me?.profile?.journalRecapSeen ?? "") < ym, !UserDefaults.standard.bool(forKey: key),
               let evs = try? await model.api({ try await $0.journal(from: prev, to: thisMonth) }), !evs.isEmpty else { return nil }
         let s = JournalSummary(events: evs, period: .month, now: prev)
-        return Recap(films: s.films, episodes: s.episodes, genre: s.genres.first?.name, month: prev, key: key)
+        return Recap(films: s.films, episodes: s.episodes, genre: s.genres.first?.name, month: prev, key: key, ym: ym)
     }
 
     private func open(_ r: Recap) {
@@ -85,6 +88,7 @@ struct MonthRecapCard: View {
 
     private func dismissCard(_ r: Recap) {
         UserDefaults.standard.set(true, forKey: r.key)
+        Task { _ = try? await model.api { try await $0.journalRecapSeen(month: r.ym) } }
         withAnimation { done() }
     }
 

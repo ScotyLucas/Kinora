@@ -57,6 +57,8 @@ public struct Profile: Codable, Sendable, Equatable, Hashable, Identifiable {
     public var skipIntro: String?
     /// Films the profile means to watch in a year (0 or nil: no goal).
     public var journalGoal: Int?
+    /// The last month (YYYY-MM) whose recap card the profile closed, on any device.
+    public var journalRecapSeen: String?
 
     public init(id: Int, name: String, color: String, hasPin: Bool = false, isKids: Bool = false) {
         self.id = id; self.name = name; self.color = color; self.hasPin = hasPin; self.isKids = isKids

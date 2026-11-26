@@ -204,6 +204,7 @@
   "jEmptyHint": "Whatever you finish (or mark as watched) shows up here.",
   "jMinutes": {"one": "{0} minute", "other": "{0} minutes"},
   "jVs": {"month": "Arrows compare with the same days of last month.", "year": "Arrows compare with this point last year.", "last": "Arrows compare with the year before."},
+  "jVsFail": "The period before could not be loaded just now, so there are no arrows.",
   "jGoal": "Yearly goal",
   "jGoalSet": "Set a yearly goal",
   "jGoalFilms": "How many films do you want to watch this year?",

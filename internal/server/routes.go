@@ -178,6 +178,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/admin/acquire/requests/{id}/deny", s.admin(s.handleAdminRequestDecide(false)))
 	// Felfedezés and requests: every signed-in profile except kids ones
 	m.HandleFunc("GET /api/journal", s.withProfile(s.handleJournal))
+	m.HandleFunc("POST /api/journal/recap-seen", s.withProfile(s.handleJournalRecapSeen))
 	m.HandleFunc("GET /api/discover", s.withProfile(s.handleDiscover))
 	m.HandleFunc("GET /api/discover/search", s.withProfile(s.handleDiscoverSearch))
 	m.HandleFunc("GET /api/discover/browse", s.withProfile(s.handleDiscoverBrowse))

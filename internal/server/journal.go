@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -30,4 +31,26 @@ func (s *Server) handleJournal(w http.ResponseWriter, r *http.Request, c *reqCtx
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"from": from, "to": to, "events": evs})
+}
+
+var recapMonth = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])$`)
+
+// handleJournalRecapSeen: POST /api/journal/recap-seen {"month":"YYYY-MM"}. The home page's monthly
+// recap card stays closed for that month on every device of the profile (kids' profiles included).
+func (s *Server) handleJournalRecapSeen(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	var in struct {
+		Month string `json:"month"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if !recapMonth.MatchString(in.Month) {
+		writeErr(w, http.StatusBadRequest, "érvénytelen hónap")
+		return
+	}
+	if err := s.st.SetJournalRecapSeen(c.Profile.ID, in.Month); err != nil {
+		s.internalErr(w, r, err)
+		return
+	}
+	ok(w)
 }
