@@ -4563,6 +4563,9 @@ async function adminAcqRequests(body) {
   };
   const canSearch = r => r.kind === 'movie' && ['pending', 'approved', 'waiting', 'failed'].includes(r.status) && set.libraries.length > 0;
   const fullTitle = r => r.title + (r.year ? ' (' + r.year + ')' : '');
+  // an arrived film can be searched again for another version: that download is not tied to the request,
+  // so the request stays „Megérkezett” and the new file joins the film as a second version
+  const canSearchMore = r => r.kind === 'movie' && r.status === 'available' && set.libraries.length > 0;
   const acts = r => {
     const more = [
       canSearch(r) && [T.isInteractive, () => movieInteractive(r.tmdb_id, fullTitle(r), r.library_id || 0, r.id)],
@@ -4573,6 +4576,7 @@ async function adminAcqRequests(body) {
       r.status === 'pending' && h('button.btn.small', { onclick: () => decide(r, false) }, T.reqDeny),
       ['waiting', 'failed', 'denied'].includes(r.status) && h('button.btn.small', { onclick: () => decide(r, true) }, T.retry),
       r.status === 'downloading' && h('a.btn.small.ghost', { href: '#/admin/acqqueue' }, T.aAcqQueue),
+      canSearchMore(r) && h('button.btn.small.ghost', { title: T.isInteractive, onclick: () => movieInteractive(r.tmdb_id, fullTitle(r), r.library_id || 0, 0) }, icon('search'), T.isInteractiveShort),
       more.length > 0 && h('button.btn.small.ghost.icon-only', { 'aria-label': T.moreActions, title: T.moreActions, 'aria-haspopup': 'menu', onclick: e => popMenu(e.currentTarget, more) }, icon('more', true)));
   };
   const row = r => {
