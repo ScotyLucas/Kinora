@@ -36,7 +36,6 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/push/ios", s.authed(s.handlePushIOSPair))
 	m.HandleFunc("PATCH /api/push/ios", s.authed(s.handlePushIOSPrefs))
 	m.HandleFunc("DELETE /api/push/ios", s.authed(s.handlePushIOSUnpair))
-	m.HandleFunc("POST /api/push/ios/test", s.authed(s.handlePushIOSTest))
 	m.HandleFunc("POST /api/quickconnect/lookup", s.authed(s.handleQCLookup))
 	m.HandleFunc("POST /api/quickconnect/approve", s.authed(s.handleQCApprove))
 

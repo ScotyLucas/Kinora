@@ -184,44 +184,6 @@ func (s *Server) handlePushIOSUnpair(w http.ResponseWriter, r *http.Request, c *
 	ok(w)
 }
 
-// handlePushIOSTest sends a test notification to this device.
-func (s *Server) handlePushIOSTest(w http.ResponseWriter, r *http.Request, c *reqCtx) {
-	if !pushSession(w, c) {
-		return
-	}
-	p, err := s.st.PushIOSFor(c.DeviceID)
-	if err != nil {
-		s.internalErr(w, r, err)
-		return
-	}
-	if p == nil {
-		writeErr(w, http.StatusNotFound, "ez az eszköz nincs párosítva")
-		return
-	}
-	T := push.Format
-	if lang := r.Header.Get(langHeader); lang != "" && lang != "hu" {
-		T = s.pushText(lang)
-	}
-	err = s.Push.SendDevice(r.Context(), *p, push.Message{V: 1, Type: "test", Title: s.st.Setting("server_name"),
-		Body: T("Az értesítések működnek."), Tag: "test"})
-	var re *push.RelayError
-	switch {
-	case err == nil:
-		if still, _ := s.st.PushIOSFor(c.DeviceID); still == nil {
-			writeErr(w, http.StatusGone, "a közvetítő már nem ismeri ezt az eszközt, párosítsd újra")
-			return
-		}
-		ok(w)
-	case errors.Is(err, push.ErrDisabled):
-		writeErr(w, http.StatusConflict, "a push nincs bekapcsolva ezen a szerveren")
-	case errors.As(err, &re) && re.Status == http.StatusTooManyRequests:
-		writeErr(w, http.StatusTooManyRequests, "túl sok értesítés, próbáld később")
-	default:
-		s.log.Warn("push: test", "err", err)
-		writeErr(w, http.StatusBadGateway, "a push-közvetítő nem fogadta az értesítést")
-	}
-}
-
 // forgetHandle tells the relay to drop a handle, in the background.
 func (s *Server) forgetHandle(h string) {
 	go func() {

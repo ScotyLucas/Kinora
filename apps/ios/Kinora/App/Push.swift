@@ -121,25 +121,6 @@ final class PushManager {
         paired = false
     }
 
-    func test() async {
-        guard let client = model?.client else { return }
-        lastError = nil
-        do {
-            working = true
-            defer { working = false }
-            try await client.testPush()
-        } catch KinoraError.http(let code, _) where code == 404 || code == 410 {
-            // The server lost the pairing or the relay forgot the handle: pair again.
-            if let server = model?.server { store.remove(saved: server.id) }
-            await syncCurrent()
-            if paired {
-                do { try await client.testPush() } catch { lastError = error.localizedDescription }
-            }
-        } catch {
-            lastError = error.localizedDescription
-        }
-    }
-
     func setMuted(_ category: String, _ off: Bool) async {
         if off { muted.insert(category) } else { muted.remove(category) }
         await sendPrefs()

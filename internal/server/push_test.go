@@ -2,13 +2,11 @@ package server
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/ScotyLucas/kinora/internal/push"
 	"github.com/ScotyLucas/kinora/internal/push/pushtest"
 )
 
@@ -45,18 +43,6 @@ func TestPushIOSPairing(t *testing.T) {
 	if code := c.do("POST", "/api/push/ios", pairBody, nil); code != 200 {
 		t.Fatalf("pair %d", code)
 	}
-	if code := c.do("POST", "/api/push/ios/test", nil, nil); code != 200 {
-		t.Fatalf("test push %d", code)
-	}
-	sent, _, _ := rl.Snapshot()
-	if len(sent) != 1 || sent[0].Handle != handle {
-		t.Fatalf("sent %v", sent)
-	}
-	plain, err := pushtest.Open(key, sent[0].Payload)
-	var m push.Message
-	if err != nil || json.Unmarshal(plain, &m) != nil || m.Type != "test" {
-		t.Fatalf("payload %q %v", plain, err)
-	}
 
 	// the device's language and categories
 	c.hdr = map[string]string{"X-Kinora-Lang": "en"}
@@ -72,13 +58,6 @@ func TestPushIOSPairing(t *testing.T) {
 	if p, _ := st.PushIOSAll(); len(p) != 1 || p[0].Lang != "en" || !p[0].Live || p[0].Wants("episodes") || !p[0].Wants("requests") {
 		t.Fatalf("stored %+v", p)
 	}
-	c.do("POST", "/api/push/ios/test", nil, nil)
-	sent, _, _ = rl.Snapshot()
-	plain, _ = pushtest.Open(key, sent[len(sent)-1].Payload)
-	json.Unmarshal(plain, &m)
-	if m.Body != "Notifications are working." {
-		t.Fatalf("test push in English: %q", m.Body)
-	}
 	c.hdr = nil
 
 	// re-pairing with a new handle forgets the old one at the relay
@@ -91,16 +70,6 @@ func TestPushIOSPairing(t *testing.T) {
 		t.Fatalf("unpair %d", code)
 	}
 	waitDeleted(t, rl, newHandle)
-	if code := c.do("POST", "/api/push/ios/test", nil, nil); code != 404 {
-		t.Fatalf("test after unpair %d", code)
-	}
-
-	// a gone device answers 410 and is dropped
-	c.do("POST", "/api/push/ios", pairBody, nil)
-	rl.SetGone(handle)
-	if code := c.do("POST", "/api/push/ios/test", nil, nil); code != 410 || st.CountPushIOS() != 0 {
-		t.Fatalf("gone %d", code)
-	}
 
 	// logging out removes the pairing with the session
 	c.do("POST", "/api/push/ios", map[string]string{"handle": newHandle, "key": pairBody["key"]}, nil)

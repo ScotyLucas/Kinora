@@ -314,7 +314,6 @@ struct NotificationSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @State private var push = PushManager.shared
-    @State private var sent = false
 
     var body: some View {
         Form {
@@ -373,23 +372,6 @@ struct NotificationSettingsView: View {
                     }
                 } footer: {
                     Text(L("Az értesítések le vannak tiltva. Engedélyezd őket az iOS Beállítások appban a Kinoránál."))
-                }
-                .listRowBackground(Theme.panel)
-            }
-
-            if push.wanted, push.paired {
-                Section {
-                    Button {
-                        Task {
-                            await push.test()
-                            sent = push.lastError == nil
-                        }
-                    } label: {
-                        Label(L("Teszt értesítés"), systemImage: "paperplane")
-                    }
-                    .disabled(push.working)
-                } footer: {
-                    if sent { Text(L("Elküldve. Pár másodpercen belül meg kell érkeznie.")) }
                 }
                 .listRowBackground(Theme.panel)
             }

@@ -65,8 +65,6 @@ extension KinoraClient {
     }
 
     public func unpairPush() async throws { try await delete("/api/push/ios") }
-
-    public func testPush() async throws { try await post("/api/push/ios/test") }
 }
 
 // MARK: - relay

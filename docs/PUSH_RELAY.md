@@ -218,7 +218,6 @@ csomagban lévő `s` mező alapján választja ki a kulcsot.
   | `GET /api/push/ios` | `{"enabled": false}` vagy `{"enabled": true, "relay_url", "server_id", "paired"}` |
   | `POST /api/push/ios` | `{"handle": "<43 karakter base64url>", "key": "<32 bájt, base64 vagy base64url>"}`; új handle-nél a régit törli a közvetítőnél |
   | `DELETE /api/push/ios` | párosítás bontása, a handle törlése a közvetítőnél |
-  | `POST /api/push/ios/test` | tesztértesítés erre az eszközre; `410`, ha a közvetítő már nem ismeri |
 
 - **Küldés:** a háttérben 30 mp-enként a teljesült kérések (`acq_requests.status='available'`, `pushed=0`)
   a kérő összes párosított eszközére mennek `collapse_id: "req-<id>"`-vel. Ami több mint 24 órája teljesült
