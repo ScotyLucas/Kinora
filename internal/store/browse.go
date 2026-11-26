@@ -172,7 +172,7 @@ type Facet struct {
 	Count int    `json:"count"`
 }
 
-// Facets counts genres and tags over visible movies and series.
+// Facets counts genres and tags over visible movies and series, a film with several versions once.
 func (s *Store) Facets(p *Profile, libID int64) (genres, tags []Facet, err error) {
 	rf, rargs := RatingSQL(p, "i")
 	lib := ""
@@ -184,7 +184,7 @@ func (s *Store) Facets(p *Profile, libID int64) (genres, tags []Facet, err error
 	args = append(args, rargs...)
 	q := func(table, col string) ([]Facet, error) {
 		rows, err := s.DB.Query(`SELECT x.`+col+`, COUNT(*) FROM `+table+` x JOIN items i ON i.id=x.item_id
-			WHERE i.kind IN ('movie','series') AND i.missing=0`+lib+rf+` GROUP BY x.`+col+` COLLATE NOCASE ORDER BY COUNT(*) DESC, x.`+col, args...)
+			WHERE i.kind IN ('movie','series') AND i.missing=0`+lib+rf+NotAltVersion+` GROUP BY x.`+col+` COLLATE NOCASE ORDER BY COUNT(*) DESC, x.`+col, args...)
 		if err != nil {
 			return nil, err
 		}

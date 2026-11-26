@@ -85,3 +85,41 @@ func TestVersionsGroupByImdb(t *testing.T) {
 		t.Fatal("ungrouped version should show in the list again")
 	}
 }
+
+// a film with two versions counts once in the genre chips, as the grid shows one card
+func TestFacetsCountVersionsOnce(t *testing.T) {
+	f := fixture(t)
+	s := f.s
+	matrix := f.ids["matrix"]
+	res, err := s.DB.Exec(`INSERT INTO items(library_id,kind,key,title,sort_title,year,runtime_sec,height,width,path,size,added_at,updated_at)
+		VALUES(?,'movie',?,?,?,1999,6000,2160,3840,?,1,?,?)`, f.libID, "/m/uhd.mkv", "The Matrix", "matrix", "/m/uhd.mkv", now(), now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	uhd, _ := res.LastInsertId()
+	for _, id := range []int64{matrix, uhd} {
+		if err := s.SetImdbID(id, "tt0133093"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func() int {
+		genres, _, err := s.Facets(f.p, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range genres {
+			if g.Value == "FacetTest" {
+				return g.Count
+			}
+		}
+		return 0
+	}
+	for _, id := range []int64{matrix, uhd} {
+		if _, err := s.DB.Exec(`INSERT INTO item_genres(item_id,genre) VALUES(?,'FacetTest')`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count(); n != 1 {
+		t.Fatalf("genre count = %d, want 1", n)
+	}
+}
