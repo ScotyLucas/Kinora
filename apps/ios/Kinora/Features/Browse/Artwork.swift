@@ -309,6 +309,7 @@ struct AccountMenu: View {
             if let p = model.me?.profile {
                 Text(p.name)
             }
+            Button(L("Napló"), systemImage: "chart.bar.xaxis") { model.journalVisible = true }
             Button(L("Beállítások"), systemImage: "gearshape") { model.settingsVisible = true }
             if model.me?.profileLocked != true {
                 Button(L("Profilváltás"), systemImage: "person.2") { model.switchProfile() }

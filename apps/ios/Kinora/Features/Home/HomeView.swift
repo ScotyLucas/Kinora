@@ -40,6 +40,7 @@ struct HomeView: View {
         // A new profile sees its own home: rebuild everything when it changes.
         .id(model.me?.profile?.id)
         .sheet(isPresented: $model.settingsVisible) { SettingsView() }
+        .sheet(isPresented: $model.journalVisible) { JournalSheet() }
         .alert(L("Watch party"), isPresented: Binding(get: { model.partyError != nil && !model.playerVisible && !model.partyJoinVisible },
                                                    set: { if !$0 { model.partyError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -67,6 +68,8 @@ struct HomeTab: View {
     @Environment(AppModel.self) private var model
     @State private var data: HomeData?
     @State private var error: String?
+    /// Last month's Napló card, in the first week of a month.
+    @State private var recap: MonthRecapCard.Recap?
     @Environment(\.metrics) private var metrics
 
     var body: some View {
@@ -74,6 +77,7 @@ struct HomeTab: View {
             if let data {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     if let hero = data.hero { HeroCard(item: hero) }
+                    if let recap { MonthRecapCard(recap: recap) { self.recap = nil } }
                     ForEach(data.rows) { row in
                         if !row.items.isEmpty { Shelf(row: row) }
                     }
@@ -91,6 +95,7 @@ struct HomeTab: View {
         }
         .refreshable { await load() }
         .task { if data == nil { await load() } }
+        .task { recap = await MonthRecapCard.load(model) }
         .onChange(of: model.playbackGeneration) { Task { await load() } }
         .kinoraScreen()
         .navigationTitle(L("Kezdőlap"))

@@ -198,6 +198,7 @@ func (s *Store) MergeUserData(profileID, itemID int64, in ImportedUserData) (boo
 			at = now()
 		}
 		recordWatched(tx, profileID, itemID, at)
+		recordEvent(tx, profileID, itemID, at, "import")
 	}
 	if kind == "movie" {
 		if err := mirrorUserData(tx, profileID, itemID); err != nil {

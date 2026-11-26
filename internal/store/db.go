@@ -599,6 +599,33 @@ UPDATE items SET sidecar_sig='' WHERE id IN (SELECT item_id FROM media_streams W
 	`ALTER TABLE profiles ADD COLUMN snow INTEGER NOT NULL DEFAULT 1;`,
 	// snowfall becomes opt-in: every profile starts with it off (new profiles are inserted with snow=0)
 	`UPDATE profiles SET snow=0;`,
+	// the Napló: one row per finished viewing (rewatches too), with a snapshot of what was watched so the
+	// statistics survive the file going away; backfilled with the last viewing of everything played so far
+	`CREATE TABLE watch_events(
+  id INTEGER PRIMARY KEY,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  item_id INTEGER REFERENCES items(id) ON DELETE SET NULL,
+  series_id INTEGER,
+  kind TEXT NOT NULL CHECK(kind IN ('movie','episode')),
+  title TEXT NOT NULL,
+  series_title TEXT NOT NULL DEFAULT '',
+  season INTEGER,
+  episode INTEGER,
+  year INTEGER,
+  runtime_sec INTEGER NOT NULL DEFAULT 0,
+  genres TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'play',
+  watched_at INTEGER NOT NULL
+);
+CREATE INDEX watch_events_profile_at ON watch_events(profile_id, watched_at);
+CREATE INDEX watch_events_item ON watch_events(item_id);
+INSERT INTO watch_events(profile_id,item_id,series_id,kind,title,series_title,season,episode,year,runtime_sec,genres,source,watched_at)
+  SELECT u.profile_id, i.id, i.series_id, i.kind, i.title, COALESCE(s.title,''), i.season_num, i.episode_num, COALESCE(i.year,s.year), i.runtime_sec,
+    COALESCE((SELECT group_concat(genre,'|') FROM item_genres WHERE item_id=COALESCE(s.id,i.id)),''), 'backfill', u.last_played_at
+  FROM user_data u JOIN items i ON i.id=u.item_id LEFT JOIN items s ON s.id=i.series_id AND i.kind='episode'
+  WHERE u.played=1 AND u.last_played_at IS NOT NULL AND i.kind IN ('movie','episode');`,
+	// the Napló's yearly goal: how many films the profile means to watch in a year (0 = no goal)
+	`ALTER TABLE profiles ADD COLUMN journal_goal INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // ErrNewerSchema: the database was written by a newer Kinora (after rolling back an update, for example).

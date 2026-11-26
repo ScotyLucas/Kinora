@@ -46,6 +46,12 @@ final class AppModel {
     var playerVisible = false
     /// The settings sheet is shown.
     var settingsVisible = false
+    /// The Napló (viewing journal) sheet is shown.
+    var journalVisible = false
+    /// Where the Napló opens next: a period and a bucket to select (the home page's monthly card); nil: this month.
+    var journalStart: (period: JournalPeriod, bucket: Int)?
+    /// The Napló widget was tapped: open the Napló once on home.
+    private var journalPending = false
     /// A watch party could not be started or joined (shown as an alert, or on the join screen).
     var partyError: String? { didSet { if partyError != nil { Haptic.error.play() } } }
     /// The join screen (code or QR) is shown; it shows join errors itself.
@@ -215,6 +221,7 @@ final class AppModel {
 
     func showServers() {
         settingsVisible = false
+        journalVisible = false
         servers = store.servers
         screen = .servers
     }
@@ -314,6 +321,13 @@ final class AppModel {
         me = try await client.me()
     }
 
+    /// The Napló's yearly goal of the current profile (0 removes it); saved on the server, so it follows the profile.
+    func setJournalGoal(_ goal: Int) async throws {
+        guard let id = me?.profile?.id else { return }
+        _ = try await api { try await $0.updateProfile(id, ProfileUpdate(journalGoal: goal)) }
+        try await loadMe()
+    }
+
     /// The server refuses it from a kids profile, on a device locked to one profile, and past the limit.
     var canAddProfile: Bool {
         guard let me else { return false }
@@ -340,6 +354,7 @@ final class AppModel {
 
     func switchProfile() {
         settingsVisible = false
+        journalVisible = false
         player?.close()
         #if os(iOS)
         Spotlight.clear()
@@ -357,6 +372,7 @@ final class AppModel {
     func logout() async {
         guard let server else { return }
         settingsVisible = false
+        journalVisible = false
         player?.close()
         #if os(iOS)
         await PushManager.shared.signedOut(server, client: client)
@@ -473,6 +489,7 @@ final class AppModel {
         if me == nil { try? await loadMe() }
         guard me?.user != nil else { return false }
         settingsVisible = false
+        journalVisible = false
         player?.close()
         homePath = NavigationPath()
         tab = .home
@@ -521,6 +538,7 @@ final class AppModel {
     /// The token was rejected: back to login, keep the server.
     func sessionLost() {
         settingsVisible = false
+        journalVisible = false
         if let server {
             store.setToken(nil, for: server.id)
             #if os(iOS)
@@ -747,6 +765,12 @@ final class AppModel {
             if screen == .home, player == nil || !playerVisible { tab = .downloads }
             return
         }
+        // kinora://journal, from the Napló widget: this month's Napló (once on home).
+        if url.scheme == KinoraLink.scheme, url.host() == "journal" {
+            journalStart = nil
+            journalPending = true
+            return handlePendingLink()
+        }
         #endif
         guard let link = KinoraLink(url: url) else { return }
         pendingLink = link
@@ -809,6 +833,11 @@ final class AppModel {
     #endif
 
     func handlePendingLink() {
+        if screen == .home, journalPending, client != nil {
+            journalPending = false
+            playerVisible = false
+            journalVisible = true
+        }
         guard screen == .home, let link = pendingLink, client != nil else { return }
         pendingLink = nil
         let start = pendingStart

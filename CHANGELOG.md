@@ -5,6 +5,20 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.9 – 2026-11-26
+
+- **Újdonság (minden platform):** Napló a fiókmenüben. Mit néztél, mikor és mennyit (ez a hónap, idén, tavaly,
+  kezdettől), nyilakkal az előző időszakhoz képest, éves filmcéllal, megosztható havi képpel és évösszegzővel. A hónap
+  első hetében a kezdőlapon kártya foglalja össze az előző hónapot. iPhone-on és iPaden Napló widget is van.
+- **New (all platforms):** Journal in the account menu. What you watched, when and how much (this month, this year,
+  last year, all time), with arrows against the period before, a yearly film goal, a shareable month picture and a
+  year in review. In the first week of a month a home page card sums up the month before. iPhone and iPad also get a
+  Journal widget.
+- **Javítás:** a hóesés alapból ki van kapcsolva, és az iOS/tvOS appokból kikerült. A műfajok és címkék száma egy
+  több változatban meglévő filmet egyszer számol.
+- **Fix:** snowfall is off by default and gone from the iOS/tvOS apps. Genre and tag counts count a film with
+  several versions once.
+
 ## 1.1.8 – 2026-11-26
 
 - **Újdonság (minden platform):** hóesés. Amikor nem megy film vagy sorozat, kis fehér hópelyhek hullanak a

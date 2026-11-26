@@ -181,7 +181,7 @@ struct FeedProvider: TimelineProvider {
 }
 
 /// WidgetKit's completion handlers predate Sendable; each is called once, from one task.
-private struct Handoff<T>: @unchecked Sendable {
+struct Handoff<T>: @unchecked Sendable {
     let call: (T) -> Void
     init(_ call: @escaping (T) -> Void) { self.call = call }
 }

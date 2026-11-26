@@ -8,6 +8,7 @@ struct KinoraWidgets: WidgetBundle {
         ContinueWidget()
         RecentWidget()
         SeriesWidget()
+        JournalWidget()
         DownloadsLiveActivity()
         PartyLiveActivity()
         RequestLiveActivity()

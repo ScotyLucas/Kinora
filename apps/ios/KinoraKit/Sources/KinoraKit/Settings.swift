@@ -8,11 +8,13 @@ public struct ProfileUpdate: Codable, Sendable, Equatable {
     public var autoplayNext: Bool?
     public var maxBitrate: Int?
     public var skipIntro: String?
+    public var journalGoal: Int?
 
     public init(subLangs: String? = nil, audioLangs: String? = nil, subMode: String? = nil,
-                autoplayNext: Bool? = nil, maxBitrate: Int? = nil, skipIntro: String? = nil) {
+                autoplayNext: Bool? = nil, maxBitrate: Int? = nil, skipIntro: String? = nil, journalGoal: Int? = nil) {
         self.subLangs = subLangs; self.audioLangs = audioLangs; self.subMode = subMode
         self.autoplayNext = autoplayNext; self.maxBitrate = maxBitrate; self.skipIntro = skipIntro
+        self.journalGoal = journalGoal
     }
 }
 

@@ -350,6 +350,7 @@ async function route() {
       case 'party': return await viewPartyJoin(p1);
       case 'admin': return await viewAdmin(p1 || 'dash');
       case 'account': return await viewAccount();
+      case 'journal': return await viewJournal(q);
       default: return go('#/home');
     }
   } catch (e) {
@@ -432,6 +433,7 @@ function shell(active, ...content) {
   const menuPop = h('div.menu-pop.hidden', { role: 'menu' },
     h('button', { role: 'menuitem', onclick: () => POST('/api/profiles/leave').then(() => { state.me.profile = null; go('#/profiles'); }) }, T.switchProfile),
     h('a', { role: 'menuitem', href: '#/party' }, T.joinParty),
+    h('a', { role: 'menuitem', href: '#/journal' }, T.journal),
     h('a', { role: 'menuitem', href: '#/account' }, T.account),
     me.can_request && h('a', { role: 'menuitem', href: '#/requests' }, T.myRequests),
     !p.is_kids && !me.profile_locked && h('a', { role: 'menuitem', href: '#/quickconnect' }, T.connectDevice),
@@ -1018,6 +1020,7 @@ async function viewHome() {
   }
   let hero = null;
   if (data.hero) { hero = heroBlock(data.hero, data.rows); main.append(hero); }
+  main.append(monthRecapCard() || '');
   for (const row of data.rows) {
     const landscape = row.style === 'landscape';
     main.append(shelf(srv(row.title), row.items, row.style, { more: row.more, reasons: row.reasons, playOnClick: landscape, menu: hideMenu(row.hide_as) }));
@@ -1034,6 +1037,35 @@ async function viewHome() {
     onCleanup(() => clearTimeout(t));
   }
 }
+// the first week of a month: last month from the Napló in one line, once per profile and month until dismissed
+function monthRecapCard() {
+  const now = new Date(), p = state.me.profile;
+  if (now.getDate() > 7 || !p) return null;
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1), to = new Date(now.getFullYear(), now.getMonth(), 1);
+  const key = `kinora.monthRecap.${p.id}.${from.getFullYear()}-${from.getMonth() + 1}`;
+  try { if (localStorage.getItem(key)) return null; } catch { /* private mode: show it */ }
+  const box = h('section.month-recap', { hidden: true, 'aria-label': T.journal });
+  GET(`/api/journal?from=${Math.floor(from / 1000)}&to=${Math.floor(to / 1000)}`, { quiet: true }).then(r => {
+    const evs = r.events || [];
+    if (!evs.length || !box.isConnected) return;
+    const films = evs.filter(e => e.kind === 'movie').length, eps = evs.length - films;
+    const g = new Map();
+    for (const e of evs) for (const x of e.genres || []) g.set(x, (g.get(x) || 0) + 1);
+    const top = [...g].sort((a, b) => b[1] - a[1])[0];
+    const month = from.toLocaleDateString(T.locale, { month: 'long' });
+    const per = from.getFullYear() === now.getFullYear() ? 'year' : 'last';
+    const hide = () => { try { localStorage.setItem(key, '1'); } catch { /* ignore */ } box.remove(); };
+    put(box,
+      h('div.mr-body', null,
+        h('p.mr-kick', null, T.mrTitle(month.charAt(0).toUpperCase() + month.slice(1))),
+        h('p.mr-line', null, h('em', null, T.jrFilms(films)), ' ' + T.jrEps(eps), top ? ' ' + T.mrMostly(top[0].toLowerCase()) : '')),
+      h('a.btn.primary', { href: `#/journal?p=${per}&b=${from.getMonth()}`, onclick: hide }, T.mrOpen),
+      h('button.mr-x', { type: 'button', 'aria-label': T.close, title: T.close, onclick: hide }, '✕'));
+    box.hidden = false;
+  }).catch(() => { /* no Napló today: the home page goes on without it */ });
+  return box;
+}
+
 function heroBlock(it, rows) {
   let reason = '';
   for (const r of rows) if (r.reasons && r.reasons[it.id]) { reason = srv(r.reasons[it.id]); break; }
@@ -1775,6 +1807,188 @@ async function viewDownloads() {
   await render();
 }
 
+// ===================================================================== journal (Napló)
+// Every finished viewing of the profile, grouped here in the viewer's own time zone.
+async function viewJournal(q) {
+  const main = shell('journal');
+  const now = new Date(), Y = now.getFullYear(), M = now.getMonth();
+  const periods = {
+    month: () => [new Date(Y, M, 1), new Date(Y, M + 1, 1), 'day'],
+    year: () => [new Date(Y, 0, 1), new Date(Y + 1, 0, 1), 'month'],
+    last: () => [new Date(Y - 1, 0, 1), new Date(Y, 0, 1), 'month'],
+    all: () => [new Date(0), new Date(Y + 1, 0, 1), 'year'],
+  };
+  const per = periods[q.get('p')] ? q.get('p') : 'year';
+  const [from, to, unit] = periods[per]();
+  const pick = h('nav.chips.j-period', { 'aria-label': T.jPeriod }, Object.keys(periods).map(k =>
+    h('a.chip' + (k === per ? '.on' : ''), { href: '#/journal?p=' + k, 'aria-current': k === per ? 'page' : null }, T.jPeriods[k])));
+  main.append(h('div.page-head', null, h('div', null, h('h1', null, T.journal), h('span.muted', null, T.jLede)), pick));
+  // the same stretch of the period before (month and year so far, last year against the one before it)
+  const prevFrom = { month: new Date(Y, M - 1, 1), year: new Date(Y - 1, 0, 1), last: new Date(Y - 2, 0, 1) }[per];
+  const prevTo = prevFrom && (per === 'last' ? new Date(Y - 1, 0, 1) : new Date(Math.min(prevFrom.getTime() + (now - from), from.getTime())));
+  const span = (a, b) => `/api/journal?from=${Math.floor(a / 1000)}&to=${Math.floor(b / 1000)}`;
+  const [r, prev] = await Promise.all([GET(span(from, to)), prevFrom ? GET(span(prevFrom, prevTo), { quiet: true }).catch(() => null) : null]);
+  let evs = r.events;
+  if (unit === 'year' && evs.length) evs = evs.filter(e => e.at > 0);
+  if (!evs.length) { main.append(emptyNote(T.jEmpty, T.jEmptyHint, h('a.btn', { href: '#/home' }, T.home))); return; }
+
+  const films = evs.filter(e => e.kind === 'movie'), eps = evs.filter(e => e.kind === 'episode');
+  const shows = new Set(eps.map(e => e.series_title || e.title)).size;
+  const secs = evs.reduce((a, e) => a + (e.runtime_sec || 0), 0);
+  const count = (list, keyOf) => { const m = new Map(); for (const e of list) for (const k of [].concat(keyOf(e))) if (k != null && k !== '') m.set(k, (m.get(k) || 0) + 1); return [...m].sort((a, b) => b[1] - a[1]); };
+  // a series counts once per viewing day in the genres, so a binge does not drown out the films
+  const genreBase = [...films, ...[...new Map(eps.map(e => [(e.series_title || e.title) + '|' + new Date(e.at * 1000).toDateString(), e])).values()]];
+  const genres = count(genreBase, e => e.genres);
+  const topGenre = genres[0];
+  // the change against the period before, shown only when that period has viewings to compare with
+  const pe = prev?.events?.length ? prev.events : null;
+  const delta = (d, fmt = num) => pe && h('span.j-delta' + (d > 0 ? '.up' : d < 0 ? '.down' : ''), null,
+    h('span', { 'aria-hidden': 'true' }, d > 0 ? '▲ ' : d < 0 ? '▼ ' : ''), (d > 0 ? '+' : d < 0 ? '−' : '±') + fmt(Math.abs(d)));
+  const prevSecs = pe ? pe.reduce((a, e) => a + (e.runtime_sec || 0), 0) : 0;
+  const stat = (label, value, sub, d) => h('div.j-stat', null, h('dt', null, label), h('dd', null, h('b', null, value), d, sub && h('span.muted.small', null, sub)));
+  main.append(h('dl.j-stats', null,
+    stat(T.jFilms, num(films.length), '', delta(films.length - (pe || []).filter(e => e.kind === 'movie').length)),
+    stat(T.jEpisodes, num(eps.length), shows ? T.jShows(shows) : '', delta(eps.length - (pe || []).filter(e => e.kind === 'episode').length)),
+    stat(T.jTime, T.jHours(Math.round(secs / 3600)), secs >= 86400 ? T.jDays(num(secs / 86400, 1)) : '', delta(Math.round((secs - prevSecs) / 3600), n => T.jHours(n))),
+    topGenre && stat(T.jTopGenre, topGenre[0], T.jShare(Math.round(topGenre[1] / genreBase.length * 100)))));
+  if (pe) main.append(h('p.muted.small.j-vs', null, T.jVs[per]));
+  if (per === 'year') main.append(goalBlock(films.length));
+  if (per === 'year' || per === 'last') main.append(h('p.j-recap-open', null, h('button.btn.primary', { onclick: () => openRecap() }, '▶ ' + T.jRecap)));
+
+  // timeline: one bar per day, month or year; a click lists that bucket's titles
+  const d0 = from.getTime() ? from : new Date(new Date(evs[0].at * 1000).getFullYear(), 0, 1);
+  const keyOf = t => { const d = new Date(t * 1000); return unit === 'day' ? d.getDate() : unit === 'month' ? d.getMonth() : d.getFullYear(); };
+  const keys = unit === 'day' ? [...Array(new Date(Y, M + 1, 0).getDate())].map((_, i) => i + 1)
+    : unit === 'month' ? [...Array(12).keys()]
+    : [...Array(Y - d0.getFullYear() + 1)].map((_, i) => d0.getFullYear() + i);
+  const label = k => unit === 'month' ? new Date(2000, k, 1).toLocaleDateString(T.locale, { month: 'short' }) : String(k);
+  const longLabel = k => unit === 'day' ? new Date(Y, M, k).toLocaleDateString(T.locale, { month: 'long', day: 'numeric' })
+    : unit === 'month' ? new Date(d0.getFullYear(), k, 1).toLocaleDateString(T.locale, { year: 'numeric', month: 'long' }) : String(k);
+  const buckets = new Map(keys.map(k => [k, []]));
+  for (const e of evs) { const b = buckets.get(keyOf(e.at)); if (b) b.push(e); }
+  const max = Math.max(1, ...[...buckets.values()].map(b => b.length));
+  const detail = h('div.j-detail');
+  // ?b= picks the bucket to open with (the home page's monthly recap opens its month)
+  const asked = q.get('b') != null && buckets.has(+q.get('b')) ? +q.get('b') : null;
+  let sel = asked ?? [...buckets].reverse().find(([, b]) => b.length)[0];
+  const bars = h('div.j-bars', { style: { gridTemplateColumns: `repeat(${keys.length}, minmax(${unit === 'day' ? 14 : 28}px, 1fr))` } });
+  const showBucket = k => {
+    sel = k;
+    for (const b of bars.children) b.setAttribute('aria-pressed', String(b._k === k));
+    const list = buckets.get(k);
+    put(detail, h('h3', null, longLabel(k), h('span.muted', null, ' · ', T.jViewings(list.length))),
+      list.length ? h('div.j-posters', null, [...list].reverse().map(posterOf)) : h('p.muted', null, T.jNone));
+  };
+  const posterOf = e => {
+    const art = e.image_id ? artImg({ id: e.image_id, kind: e.kind === 'episode' ? 'series' : 'movie', title: e.series_title || e.title, year: e.year, updated_at: e.updated_at }, 'poster', '')
+      : h('div.art.noart', null, h('div.ph', null, e.series_title || e.title));
+    const when = new Date(e.at * 1000).toLocaleDateString(T.locale, { month: 'short', day: 'numeric' });
+    const sub = e.kind === 'episode' ? [e.season != null && e.episode != null ? T.ep(e.season, e.episode) : '', e.title].filter(Boolean).join(' · ') : (e.year || '');
+    const body = [art, h('div.cap', null, h('b', null, e.series_title || e.title), sub && h('span', null, sub), h('span.muted', null, when))];
+    return e.item_id ? h('a.j-poster', { href: '#/item/' + e.item_id }, body) : h('div.j-poster', null, body);
+  };
+  for (const k of keys) {
+    const n = buckets.get(k).length;
+    const b = h('button.j-bar', { type: 'button', 'aria-label': longLabel(k) + ': ' + T.jViewings(n), onclick: () => showBucket(k) },
+      h('i', { style: { height: (n ? Math.max(4, n / max * 100) : 0) + '%' } }), h('span', null, unit === 'day' && k % 5 !== 1 ? '' : label(k)));
+    b._k = k;
+    bars.append(b);
+  }
+  main.append(h('section.j-sec', { 'aria-labelledby': 'j-tl' }, h('h2', { id: 'j-tl' }, T.jTimeline), h('div.scroll-x', null, bars), detail));
+  showBucket(sel);
+  if (asked != null) requestAnimationFrame(() => detail.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+
+  // genres, decades, when
+  const barList = (rows, total) => h('ul.j-list', null, rows.map(([k, n]) => h('li', null, h('span', null, k),
+    h('span.j-meter', { 'aria-hidden': 'true' }, h('i', { style: { width: Math.round(n / rows[0][1] * 100) + '%' } })), h('span.muted', null, num(n)))));
+  const decades = count(evs.filter(e => e.year), e => Math.floor(e.year / 10) * 10).map(([k, n]) => [`${k}–${String(k + 9).slice(2)}`, n]);
+  const days = [0, 0, 0, 0, 0, 0, 0], hours = Array(24).fill(0);
+  for (const e of evs) { const d = new Date(e.at * 1000); days[(d.getDay() + 6) % 7]++; hours[d.getHours()]++; }
+  const dMax = Math.max(1, ...days);
+  const peak = hours.reduce((bi, n, i) => n > hours[bi] ? i : bi, 0);
+  const late = hours.slice(0, 5).reduce((a, n) => a + n, 0);
+  const dayName = i => new Date(2024, 0, 1 + i).toLocaleDateString(T.locale, { weekday: 'short' }); // 2024-01-01 was a Monday
+  const busiest = days.indexOf(Math.max(...days));
+  main.append(h('div.j-grid', null,
+    genres.length > 0 && h('section.j-sec', null, h('h2', null, T.genres), barList(genres.slice(0, 6))),
+    decades.length > 0 && h('section.j-sec', null, h('h2', null, T.jDecades), barList(decades.slice(0, 6))),
+    h('section.j-sec', null, h('h2', null, T.jWhen),
+      h('div.j-week', null, days.map((n, i) => h('div', { title: dayName(i) + ': ' + T.jViewings(n) },
+        h('i', { style: { opacity: n ? 0.25 + 0.75 * n / dMax : 0.08 } }), h('span', null, dayName(i))))),
+      h('ul.j-facts', null,
+        h('li', null, T.jPeak(peak, (peak + 1) % 24)),
+        h('li', null, T.jBusiest(new Date(2024, 0, 1 + busiest).toLocaleDateString(T.locale, { weekday: 'long' }))),
+        late > 0 && h('li', null, T.jLate(late))))));
+
+  // the year as a story: one big statement per page; click (or →, ←) to step, Esc to leave
+  function openRecap() {
+    const year = String(from.getFullYear());
+    const big = (t, cls = '') => h('p.jr-big' + cls, null, t);
+    const kick = t => h('p.jr-kick', null, t);
+    const bucketList = [...buckets];
+    const [bk, bEvs] = bucketList.reduce((best, b) => b[1].length > best[1].length ? b : best, bucketList[0]);
+    const tops = new Map();
+    for (const e of evs) {
+      const k = e.series_title || e.title, t = tops.get(k) || { title: k, n: 0, last: 0, e, series: e.kind === 'episode' };
+      t.n++; t.last = Math.max(t.last, e.at); if (!t.e.image_id && e.image_id) t.e = e; tops.set(k, t);
+    }
+    const top = [...tops.values()].sort((a, b) => b.n - a.n || b.last - a.last).slice(0, 5);
+    const perDay = count(evs, e => new Date(e.at * 1000).toDateString());
+    const marathon = perDay.length && perDay.reduce((b, x) => x[1] > b[1] || (x[1] === b[1] && new Date(x[0]) < new Date(b[0])) ? x : b);
+    const owl = late * 100 >= evs.length * 15;
+    const hoursText = secs < 3600 ? T.jMinutes(Math.round(secs / 60)) : T.jHours(Math.round(secs / 3600));
+    const pages = [
+      () => [h('p.jr-year', null, year), big(T.jrIntro), h('p.jr-small', null, T.jrTap)],
+      () => [kick(T.jrTotal), h('p.jr-big', null, h('em', null, T.jrFilms(films.length)), ' ' + T.jrEps(eps.length)),
+        h('p.jr-small', null, T.jrScreen(hoursText)), secs >= 86400 && h('p.jr-small', null, T.jDays(num(secs / 86400, 1))),
+        per === 'year' && state.me.profile?.journal_goal > 0 && h('p.jr-small', null, T.jGoalOf(num(films.length), num(state.me.profile.journal_goal)))],
+      topGenre && (() => [kick(T.jTopGenre), h('p.jr-huge', null, topGenre[0]), big(T.jShare(Math.round(topGenre[1] / genreBase.length * 100))),
+        genres.length > 1 && h('ol.jr-rest', { start: 2 }, genres.slice(1, 4).map(([g]) => h('li', null, g)))]),
+      bEvs.length && (() => {
+        const mx = Math.max(1, ...bucketList.map(([, b]) => b.length));
+        return [kick(T.jrMonth), h('p.jr-huge', null, new Date(from.getFullYear(), bk, 1).toLocaleDateString(T.locale, { month: 'long' })),
+          big(T.jViewings(bEvs.length)),
+          h('div.jr-bars', { 'aria-hidden': 'true' }, bucketList.map(([k, b]) => h('div', null,
+            h('i' + (k === bk ? '.on' : ''), { style: { height: (b.length ? Math.max(4, b.length / mx * 100) : 2) + '%' } }),
+            h('span', null, new Date(2024, k, 1).toLocaleDateString(T.locale, { month: 'narrow' })))))];
+      }),
+      top.length && (() => [kick(T.jrTitles), h('ol.jr-top', null, top.map((t, i) => h('li' + (i ? '' : '.first'), null,
+        h('span.jr-n', null, i + 1),
+        t.e.image_id ? artImg({ id: t.e.image_id, kind: t.series ? 'series' : 'movie', title: t.title, updated_at: t.e.updated_at }, 'poster', '') : h('div.art.noart', null, h('div.ph', null, t.title)),
+        h('div', null, h('b', null, t.title), h('span.muted', null, t.series ? T.jrEpCount(t.n) : T.jrTimes(t.n))))))]),
+      marathon && marathon[1] >= 2 && (() => [kick(T.jrMarathon),
+        h('p.jr-huge', null, new Date(marathon[0]).toLocaleDateString(T.locale, { month: 'long', day: 'numeric' })), big(T.jrOneDay(marathon[1]))]),
+      () => [kick(owl ? T.jrOwl : T.jWhen), h('p.jr-huge', null, T.jrAround(peak)),
+        big(T.jrFavDay(new Date(2024, 0, 1 + busiest).toLocaleDateString(T.locale, { weekday: 'long' }))), late > 0 && h('p.jr-small', null, T.jLate(late))],
+      decades.length && (() => [kick(T.jrDecade), h('p.jr-huge', null, decades[0][0]), big(T.jViewings(decades[0][1]))]),
+      () => [big(T.jrEnd), h('p.jr-actions', null, h('button.btn.primary', { onclick: () => show(0) }, '↺ ' + T.jrAgain), h('button.btn', { onclick: () => close() }, T.close))],
+    ].filter(Boolean);
+
+    let at = 0;
+    const bars = h('div.jr-progress', { 'aria-hidden': 'true' }, pages.map(() => h('i')));
+    const page = h('div.jr-page', { 'aria-live': 'polite' });
+    const box = h('div.jr', { role: 'dialog', 'aria-modal': 'true', 'aria-label': T.jRecap + ' ' + year },
+      bars, h('div.jr-head', null, h('span', null, 'Kinora · ' + year), h('button.jr-x', { 'aria-label': T.close, onclick: () => close() }, '✕')),
+      page, h('div.jr-nav', null, h('button.jr-prev', { 'aria-label': T.jrPrev, onclick: () => show(at - 1) }), h('button.jr-next', { 'aria-label': T.jrNext, onclick: () => show(at + 1) })));
+    const show = i => {
+      if (i < 0 || i >= pages.length) return;
+      at = i;
+      page.replaceChildren(...pages[i]().filter(Boolean));
+      page.classList.remove('in'); void page.offsetWidth; page.classList.add('in');
+      [...bars.children].forEach((b, j) => b.classList.toggle('on', j <= i));
+      box.classList.toggle('last', i === pages.length - 1);
+    };
+    const key = e => { if (e.key === 'Escape') close(); else if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); show(at + 1); } else if (e.key === 'ArrowLeft') show(at - 1); };
+    let closed = false;
+    const close = () => { if (closed) return; closed = true; box.remove(); document.documentElement.style.overflow = ""; document.removeEventListener('keydown', key); };
+    onCleanup(close);
+    document.addEventListener('keydown', key);
+    document.body.append(box); document.documentElement.style.overflow = "hidden";
+    show(0);
+    box.querySelector('.jr-x').focus();
+  }
+}
+
 // ===================================================================== account
 async function viewAccount() {
   const main = shell('account');
@@ -1787,6 +2001,40 @@ async function viewAccount() {
     snowPanel(),
     devicesPanel(),
     h('p.muted', null, `${state.me.user.username} · ${state.me.server_name} · ${T.version} ${state.me.version}`));
+}
+
+// the Napló's yearly goal: films watched this year against the profile's goal, with the pace it needs;
+// saved on the profile, so every device shows the same goal
+function goalBlock(films) {
+  const p = state.me.profile, goal = p?.journal_goal || 0;
+  const canEdit = p && !p.is_kids && !state.me.profile_locked;
+  const box = h('section.j-goal', { 'aria-label': T.jGoal });
+  const edit = () => {
+    const input = h('input', { type: 'number', min: 1, max: 1000, step: 1, value: goal || 52, 'aria-label': T.jGoalFilms, style: { width: '7em' } });
+    const save = async v => {
+      try { await api('PATCH', '/api/profiles/' + p.id, { journal_goal: v }); p.journal_goal = v; toast(T.saved); route(); }
+      catch { /* api() has shown the error */ }
+    };
+    put(box, h('form.j-goal-form', { onsubmit: e => { e.preventDefault(); const v = Math.round(+input.value); if (v >= 1 && v <= 1000) save(v); else input.reportValidity(); } },
+      h('label', null, T.jGoalFilms, ' ', input),
+      h('button.btn.primary', { type: 'submit' }, T.save),
+      goal > 0 && h('button.btn.ghost', { type: 'button', onclick: () => save(0) }, T.jGoalRemove),
+      h('button.btn.ghost', { type: 'button', onclick: () => put(box, ...show()) }, T.cancel)));
+    input.focus();
+  };
+  const show = () => {
+    if (!goal) return canEdit ? [h('button.btn.ghost.small', { type: 'button', onclick: edit }, '＋ ' + T.jGoalSet)] : [];
+    const now = new Date(), y0 = new Date(now.getFullYear(), 0, 1), y1 = new Date(now.getFullYear() + 1, 0, 1);
+    const due = Math.floor(goal * (now - y0) / (y1 - y0)), ahead = films - due;
+    const pace = films >= goal ? T.jGoalDone : ahead >= 0 ? T.jGoalAhead(ahead) : T.jGoalBehind(-ahead);
+    return [h('div.j-goal-head', null, h('span', null, h('b', null, T.jGoal), ' · ', h('span.muted', null, pace)),
+        canEdit && h('button.btn.ghost.small', { type: 'button', onclick: edit }, T.edit)),
+      h('div.j-goal-bar', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': goal, 'aria-valuenow': Math.min(films, goal), 'aria-label': T.jGoal },
+        h('i', { style: { width: Math.min(100, films / goal * 100) + '%' } }), h('u', { style: { left: Math.min(100, due / goal * 100) + '%' }, title: T.jGoalDue(due) })),
+      h('p.small', null, T.jGoalOf(num(films), num(goal)))];
+  };
+  put(box, ...show());
+  return box;
 }
 
 // the current profile's snowfall switch; saved on the server, so it follows the profile to every device

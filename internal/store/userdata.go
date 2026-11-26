@@ -86,6 +86,7 @@ func (s *Store) ReportProgress(profileID int64, it *Item, position float64, ende
 	}
 	if done {
 		recordWatched(tx, profileID, it.ID, t)
+		recordEvent(tx, profileID, it.ID, t, "play")
 	}
 	if it.SeriesID != nil {
 		tx.Exec(`UPDATE user_data SET hidden=0 WHERE profile_id=? AND item_id=?`, profileID, *it.SeriesID)
@@ -148,8 +149,10 @@ func (s *Store) SetPlayed(profileID int64, it *Item, played bool) error {
 		}
 		if played {
 			recordWatched(tx, profileID, id, t)
+			recordEvent(tx, profileID, id, t, "mark")
 		} else {
 			forgetWatched(tx, profileID, id)
+			unrecordEvent(tx, profileID, id)
 		}
 	}
 	if it.Kind == "movie" {
