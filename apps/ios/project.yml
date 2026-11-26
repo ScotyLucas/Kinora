@@ -214,7 +214,6 @@ targets:
       - Kinora/App/HomeScenes.swift
       - Kinora/App/Preferences.swift
       - Kinora/App/ProgressQueue.swift
-      - Kinora/App/Snowfall.swift
       - Kinora/App/Theme.swift
       - Kinora/Features/Browse/Artwork.swift
       - Kinora/Features/Browse/ScoresViews.swift

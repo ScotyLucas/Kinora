@@ -735,13 +735,6 @@ struct TVSettingsTab: View {
                         .buttonStyle(TVRowStyle())
                     NavigationLink { TVHomeScenesView() } label: { Label(L("Otthon-jelenetek"), systemImage: "house") }
                         .buttonStyle(TVRowStyle())
-                    if let p = model.me?.profile, !p.isKids, model.me?.profileLocked != true {
-                        let on = p.snow ?? true
-                        Button { Task { try? await model.updateProfile(ProfileUpdate(snow: !on)) } } label: {
-                            Label(L("Hóesés") + ": " + (on ? L("Be") : L("Ki")), systemImage: "snowflake")
-                        }
-                        .buttonStyle(TVRowStyle())
-                    }
                     Button { confirmLogout = true } label: { Label(L("Kijelentkezés"), systemImage: "rectangle.portrait.and.arrow.right") }
                         .buttonStyle(TVRowStyle())
 

@@ -157,7 +157,7 @@ func createUserTx(tx *sql.Tx, username, password string, admin bool) (*User, err
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	if _, err := tx.Exec(`INSERT INTO profiles(user_id,name,color,sub_langs,audio_langs,created_at) VALUES(?,?,?,?,?,?)`,
+	if _, err := tx.Exec(`INSERT INTO profiles(user_id,name,color,sub_langs,audio_langs,snow,created_at) VALUES(?,?,?,?,?,0,?)`,
 		id, username, "#c97c5d", "hun,eng", "hun,eng", t); err != nil {
 		return nil, err
 	}
@@ -499,7 +499,7 @@ func (s *Store) CreateProfile(userID int64, in ProfileInput) (*Profile, error) {
 	if in.Name == nil {
 		return nil, errors.New("a profil neve kötelező")
 	}
-	res, err := s.DB.Exec(`INSERT INTO profiles(user_id,name,sub_langs,audio_langs,created_at) VALUES(?,?,?,?,?)`,
+	res, err := s.DB.Exec(`INSERT INTO profiles(user_id,name,sub_langs,audio_langs,snow,created_at) VALUES(?,?,?,?,0,?)`,
 		userID, *in.Name, "hun,eng", "hun,eng", now())
 	if err != nil {
 		return nil, err

@@ -265,7 +265,7 @@ async function loadMe() {
   return state.me;
 }
 
-// Snowfall: small white flakes drift down over the screens outside the player. A profile setting (on by default);
+// Snowfall: small white flakes drift down over the screens outside the player. A profile setting (off by default);
 // the canvas lets every click through, stops while a player is open and is left out under "reduce motion".
 const snow = (() => {
   let cv = null, raf = 0, flakes = [], last = 0;
@@ -294,7 +294,7 @@ const snow = (() => {
     }
   };
   const update = () => {
-    const on = !!state.me?.profile && state.me.profile.snow !== false && !still.matches;
+    const on = !!state.me?.profile && state.me.profile.snow === true && !still.matches;
     if (on && !cv) {
       cv = h('canvas.snow', { 'aria-hidden': 'true' });
       document.body.append(cv); size(); addEventListener('resize', size); last = 0; raf = requestAnimationFrame(frame);
@@ -913,7 +913,7 @@ async function selectProfile(p) {
 
 function profileEditor(p) {
   const isNew = !p;
-  p = p || { name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], is_kids: false, max_rating_level: null, sub_langs: T.defaultLangs, audio_langs: T.defaultLangs, sub_mode: 'auto', autoplay_next: true, max_bitrate: 0, snow: true };
+  p = p || { name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], is_kids: false, max_rating_level: null, sub_langs: T.defaultLangs, audio_langs: T.defaultLangs, sub_mode: 'auto', autoplay_next: true, max_bitrate: 0, snow: false };
   let color = p.color;
   const name = h('input', { type: 'text', value: p.name, maxlength: 30 });
   const sw = h('div.swatches', null, COLORS.map(c => h('button' + (c === color ? '.on' : ''), { type: 'button', style: { background: c }, 'aria-label': c, onclick: e => { color = c; sw.querySelectorAll('button').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } })));
@@ -925,7 +925,7 @@ function profileEditor(p) {
   const auds = h('input', { type: 'text', value: p.audio_langs });
   const mode = h('select', null, Object.entries(T.subModes).map(([k, v]) => h('option', { value: k, selected: p.sub_mode === k }, v)));
   const auto = h('input', { type: 'checkbox', checked: p.autoplay_next });
-  const snowOn = h('input', { type: 'checkbox', checked: p.snow !== false });
+  const snowOn = h('input', { type: 'checkbox', checked: p.snow === true });
   const skipSel = h('select', null, Object.entries(T.skipModes).map(([k, v]) => h('option', { value: k, selected: (p.skip_intro || 'manual') === k }, v)));
   const br = h('select', null, T.bitrateOpts.map(([v, l]) => h('option', { value: v, selected: p.max_bitrate === v }, l)));
   const body = h('div', null, field(T.profileName, name), h('label.field', null, h('span', null, T.color), sw), field(T.pin, pin),
@@ -1792,7 +1792,7 @@ async function viewAccount() {
 // the current profile's snowfall switch; saved on the server, so it follows the profile to every device
 function snowPanel() {
   const p = state.me.profile;
-  const box = h('input', { type: 'checkbox', checked: p.snow !== false, disabled: p.is_kids || state.me.profile_locked, onchange: async e => {
+  const box = h('input', { type: 'checkbox', checked: p.snow === true, disabled: p.is_kids || state.me.profile_locked, onchange: async e => {
     const on = e.target.checked;
     try { await api('PATCH', '/api/profiles/' + p.id, { snow: on }); p.snow = on; snow(); toast(T.saved); }
     catch { e.target.checked = !on; }

@@ -595,8 +595,10 @@ CREATE TABLE password_links(
 	// Re-probe files with embedded subtitles on the next scan to populate their disposition.
 	`ALTER TABLE media_streams ADD COLUMN hearing_impaired INTEGER NOT NULL DEFAULT 0;
 UPDATE items SET sidecar_sig='' WHERE id IN (SELECT item_id FROM media_streams WHERE type='subtitle' AND external_path='');`,
-	// snowfall on the screens outside the player, per profile (on by default)
+	// snowfall on the screens outside the player, per profile (the column default is 1; profiles are created with it off)
 	`ALTER TABLE profiles ADD COLUMN snow INTEGER NOT NULL DEFAULT 1;`,
+	// snowfall becomes opt-in: every profile starts with it off (new profiles are inserted with snow=0)
+	`UPDATE profiles SET snow=0;`,
 }
 
 // ErrNewerSchema: the database was written by a newer Kinora (after rolling back an update, for example).

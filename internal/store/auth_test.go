@@ -60,10 +60,16 @@ func TestUsersSessionsProfiles(t *testing.T) {
 	if lim, strict := kp.RatingLimit(); lim != 1 || !strict {
 		t.Fatalf("kids limit = %d %v", lim, strict)
 	}
-	if !ps[0].Snow || !kp.Snow {
-		t.Fatal("snowfall should be on by default")
+	if ps[0].Snow || kp.Snow {
+		t.Fatal("snowfall should be off by default")
 	}
-	off := false
+	on, off := true, false
+	if err := s.UpdateProfile(kp.ID, ProfileInput{Snow: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if kp, _ = s.Profile(kp.ID); !kp.Snow {
+		t.Fatal("snowfall not switched on")
+	}
 	if err := s.UpdateProfile(kp.ID, ProfileInput{Snow: &off}); err != nil {
 		t.Fatal(err)
 	}
