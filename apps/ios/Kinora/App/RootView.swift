@@ -23,6 +23,7 @@ struct RootView: View {
             case .offline:
                 OfflineView()
             }
+            if model.showsSnow { SnowfallView().transition(.opacity) }
         }
         .animation(.default, value: model.screen)
         .foregroundStyle(Theme.plasterBright)

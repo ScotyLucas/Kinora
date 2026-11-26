@@ -435,6 +435,9 @@
    "off": "Kikapcsolva"
   },
   "autoplayNext": "Következő rész automatikus indítása",
+  "appearance": "Megjelenés",
+  "snow": "Hóesés",
+  "snowHint": "Kis fehér hópelyhek hullanak a képernyőn, amikor nem megy film vagy sorozat. A profilodhoz tartozik, így minden eszközödön érvényes.",
   "maxBitrate": "Maximális bitráta",
   "bitrateOpts": [
    [

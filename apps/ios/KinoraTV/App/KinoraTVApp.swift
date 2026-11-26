@@ -52,6 +52,7 @@ struct TVRootView: View {
             case .offline: // iOS only (downloads); never set on tvOS
                 TVServersView()
             }
+            if model.showsSnow { SnowfallView().transition(.opacity) }
         }
         .animation(.default, value: model.screen)
     }

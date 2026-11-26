@@ -435,6 +435,9 @@
    "off": "Aus"
   },
   "autoplayNext": "Nächste Folge automatisch abspielen",
+  "appearance": "Darstellung",
+  "snow": "Schneefall",
+  "snowHint": "Kleine weiße Schneeflocken fallen über den Bildschirm, solange kein Film und keine Folge läuft. Die Einstellung gehört zu deinem Profil und gilt auf allen deinen Geräten.",
   "maxBitrate": "Maximale Bitrate",
   "bitrateOpts": [
    [
@@ -1403,6 +1406,8 @@
    "Következő": "Weiter",
    "Következő rész": "Nächste Folge",
    "Következő rész automatikusan": "Nächste Folge automatisch",
+   "Be": "An",
+   "Hóesés": "Schneefall",
    "Közepes": "Mittel",
    "Küldés": "Senden",
    "Külső cím hozzáadása": "Externe Adresse hinzufügen",

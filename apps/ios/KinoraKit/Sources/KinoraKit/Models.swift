@@ -55,6 +55,8 @@ public struct Profile: Codable, Sendable, Equatable, Hashable, Identifiable {
     public var autoplayNext: Bool?
     public var maxBitrate: Int?
     public var skipIntro: String?
+    /// Snowflakes fall on the screens outside the player (nil: an older server, on).
+    public var snow: Bool?
 
     public init(id: Int, name: String, color: String, hasPin: Bool = false, isKids: Bool = false) {
         self.id = id; self.name = name; self.color = color; self.hasPin = hasPin; self.isKids = isKids

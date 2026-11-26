@@ -5,6 +5,14 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.8 – 2026-11-26
+
+- **Újdonság (minden platform):** hóesés. Amikor nem megy film vagy sorozat, kis fehér hópelyhek hullanak a
+  képernyőn. Profilonként kapcsolható (web: Fiók → Megjelenés, iPhone: Beállítások → Lejátszás, Apple TV:
+  Beállítások), és alapból mindenkinél be van kapcsolva. A „mozgás csökkentése” beállítás mellett nem esik.
+- **New (all platforms):** snowfall. While no film or episode is playing, small white snowflakes fall across the
+  screen. It is a per-profile switch (web: Account → Appearance, iPhone: Settings → Playback, Apple TV: Settings),
+  on for everyone by default, and it stays off under Reduce Motion.
 - **Javítás (iOS, elrendezés):** fekvő iPhone-on a watch party panel már nem tolja ki a lejátszót a képernyőről
   (a QR-kód alapból rejtve, a csevegés görgethető), iPad-ablakban a lejátszó bezárógombja és a kezdőlap logója nem
   kerül az ablakvezérlők alá, a részletek borítóképe legfeljebb a képernyő felét foglalja, és fekvő telefonon

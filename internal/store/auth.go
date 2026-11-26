@@ -334,6 +334,7 @@ type Profile struct {
 	AutoplayNext   bool   `json:"autoplay_next"`
 	MaxBitrate     int    `json:"max_bitrate"`
 	SkipIntro      string `json:"skip_intro"` // manual | auto | off
+	Snow           bool   `json:"snow"`       // snowflakes fall on the screens outside the player
 	CreatedAt      int64  `json:"created_at"`
 	pinHash        string
 	// Libraries limits the profile to the account's allowed libraries (nil = all).
@@ -377,7 +378,7 @@ func (p *Profile) CheckPIN(pin string) bool {
 	return CheckPassword(p.pinHash, pin)
 }
 
-const profileCols = `id,user_id,name,color,COALESCE(pin_hash,''),is_kids,max_rating_level,sub_langs,audio_langs,sub_mode,autoplay_next,max_bitrate,skip_intro,created_at,
+const profileCols = `id,user_id,name,color,COALESCE(pin_hash,''),is_kids,max_rating_level,sub_langs,audio_langs,sub_mode,autoplay_next,max_bitrate,skip_intro,snow,created_at,
 	COALESCE((SELECT u.libraries FROM users u WHERE u.id=profiles.user_id AND u.is_admin=0),'')`
 
 func scanProfile(row interface{ Scan(...any) error }) (*Profile, error) {
@@ -385,7 +386,7 @@ func scanProfile(row interface{ Scan(...any) error }) (*Profile, error) {
 	var lvl sql.NullInt64
 	var libs string
 	if err := row.Scan(&p.ID, &p.UserID, &p.Name, &p.Color, &p.pinHash, &p.IsKids, &lvl,
-		&p.SubLangs, &p.AudioLangs, &p.SubMode, &p.AutoplayNext, &p.MaxBitrate, &p.SkipIntro, &p.CreatedAt, &libs); err != nil {
+		&p.SubLangs, &p.AudioLangs, &p.SubMode, &p.AutoplayNext, &p.MaxBitrate, &p.SkipIntro, &p.Snow, &p.CreatedAt, &libs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -436,6 +437,7 @@ type ProfileInput struct {
 	AutoplayNext   *bool   `json:"autoplay_next"`
 	MaxBitrate     *int    `json:"max_bitrate"`
 	SkipIntro      *string `json:"skip_intro"`
+	Snow           *bool   `json:"snow"`
 }
 
 // Validate checks the input and returns a Hungarian error message.
@@ -554,6 +556,9 @@ func (s *Store) UpdateProfile(id int64, in ProfileInput) error {
 	}
 	if in.SkipIntro != nil {
 		add("skip_intro", *in.SkipIntro)
+	}
+	if in.Snow != nil {
+		add("snow", *in.Snow)
 	}
 	if len(set) == 0 {
 		return nil

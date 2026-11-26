@@ -435,6 +435,9 @@
    "off": "Off"
   },
   "autoplayNext": "Play the next episode automatically",
+  "appearance": "Appearance",
+  "snow": "Snowfall",
+  "snowHint": "Small white snowflakes fall across the screen while no film or episode is playing. It belongs to your profile, so it applies on all your devices.",
   "maxBitrate": "Maximum bitrate",
   "bitrateOpts": [
    [
@@ -1409,6 +1412,8 @@
    "Következő": "Next",
    "Következő rész": "Next episode",
    "Következő rész automatikusan": "Play the next episode automatically",
+   "Be": "On",
+   "Hóesés": "Snowfall",
    "Közepes": "Medium",
    "Küldés": "Send",
    "Külső cím hozzáadása": "Add an external address",

@@ -95,6 +95,9 @@ struct PlaybackSettingsView: View {
                 } label: {
                     Label(L("Intró átugrása"), systemImage: "arrow.uturn.forward")
                 }
+                Toggle(isOn: model.profileSetting(\.snow, default: true, error: $error) { ProfileUpdate(snow: $0) }) {
+                    Label(L("Hóesés"), systemImage: "snowflake")
+                }
             } header: {
                 Text(L("Profil"))
             } footer: {

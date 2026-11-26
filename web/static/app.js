@@ -265,6 +265,47 @@ async function loadMe() {
   return state.me;
 }
 
+// Snowfall: small white flakes drift down over the screens outside the player. A profile setting (on by default);
+// the canvas lets every click through, stops while a player is open and is left out under "reduce motion".
+const snow = (() => {
+  let cv = null, raf = 0, flakes = [], last = 0;
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  const size = () => {
+    const r = Math.min(devicePixelRatio || 1, 2);
+    cv.width = innerWidth * r; cv.height = innerHeight * r;
+    cv.getContext('2d').setTransform(r, 0, 0, r, 0, 0);
+    const n = Math.round(Math.min(90, innerWidth * innerHeight / 16000));
+    while (flakes.length < n) flakes.push(flake(true));
+    flakes.length = n;
+  };
+  const flake = anywhere => ({ x: Math.random() * innerWidth, y: anywhere ? Math.random() * innerHeight : -6, r: 1 + Math.random() * 2.2,
+    v: 25 + Math.random() * 45, sway: Math.random() * 6.3, a: .45 + Math.random() * .5 });
+  const frame = t => {
+    raf = requestAnimationFrame(frame);
+    const dt = Math.min((t - (last || t)) / 1000, .1); last = t;
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, innerWidth, innerHeight);
+    if (document.querySelector('.player')) return; // films and episodes play without snow
+    c.fillStyle = '#fff';
+    for (const f of flakes) {
+      f.y += f.v * dt; f.sway += dt * .8; f.x += Math.sin(f.sway) * 12 * dt;
+      if (f.y > innerHeight + 6) Object.assign(f, flake(false));
+      c.globalAlpha = f.a; c.beginPath(); c.arc(f.x, f.y, f.r, 0, 6.2832); c.fill();
+    }
+  };
+  const update = () => {
+    const on = !!state.me?.profile && state.me.profile.snow !== false && !still.matches;
+    if (on && !cv) {
+      cv = h('canvas.snow', { 'aria-hidden': 'true' });
+      document.body.append(cv); size(); addEventListener('resize', size); last = 0; raf = requestAnimationFrame(frame);
+    } else if (!on && cv) {
+      cancelAnimationFrame(raf); removeEventListener('resize', size); cv.remove(); cv = null; flakes = [];
+    }
+  };
+  still.addEventListener?.('change', update);
+  return update;
+})();
+
 async function route() {
   if (APP && APP.leaving) return; // walking back to the app's launcher (appshell.js)
   const gen = ++state.gen;
@@ -281,6 +322,7 @@ async function route() {
   if (p0 === 'join' && p1) return viewJoin(p1);
   if (p0 === 'setpw' && p1) return viewSetPassword(p1);
   if (!state.me) await loadMe();
+  snow();
   if (!state.me) {
     if (p0 !== 'login') { if (p0 === 'quickconnect') rememberAfter(location.hash); return go('#/login'); }
     const code = state.status.quickconnect_enabled && (p1 === 'code' || (TV && p1 !== 'password'));
@@ -871,7 +913,7 @@ async function selectProfile(p) {
 
 function profileEditor(p) {
   const isNew = !p;
-  p = p || { name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], is_kids: false, max_rating_level: null, sub_langs: T.defaultLangs, audio_langs: T.defaultLangs, sub_mode: 'auto', autoplay_next: true, max_bitrate: 0 };
+  p = p || { name: '', color: COLORS[Math.floor(Math.random() * COLORS.length)], is_kids: false, max_rating_level: null, sub_langs: T.defaultLangs, audio_langs: T.defaultLangs, sub_mode: 'auto', autoplay_next: true, max_bitrate: 0, snow: true };
   let color = p.color;
   const name = h('input', { type: 'text', value: p.name, maxlength: 30 });
   const sw = h('div.swatches', null, COLORS.map(c => h('button' + (c === color ? '.on' : ''), { type: 'button', style: { background: c }, 'aria-label': c, onclick: e => { color = c; sw.querySelectorAll('button').forEach(b => b.classList.remove('on')); e.currentTarget.classList.add('on'); } })));
@@ -883,13 +925,14 @@ function profileEditor(p) {
   const auds = h('input', { type: 'text', value: p.audio_langs });
   const mode = h('select', null, Object.entries(T.subModes).map(([k, v]) => h('option', { value: k, selected: p.sub_mode === k }, v)));
   const auto = h('input', { type: 'checkbox', checked: p.autoplay_next });
+  const snowOn = h('input', { type: 'checkbox', checked: p.snow !== false });
   const skipSel = h('select', null, Object.entries(T.skipModes).map(([k, v]) => h('option', { value: k, selected: (p.skip_intro || 'manual') === k }, v)));
   const br = h('select', null, T.bitrateOpts.map(([v, l]) => h('option', { value: v, selected: p.max_bitrate === v }, l)));
   const body = h('div', null, field(T.profileName, name), h('label.field', null, h('span', null, T.color), sw), field(T.pin, pin),
     p.has_pin && h('label.check', null, removePin, T.removePin),
     h('label.check', null, kids, T.isKids), field(T.maxRating, lvl),
     h('div.grid2', null, field(T.subLangs, subs, T.langHint), field(T.audioLangs, auds, T.langHint)),
-    h('div.grid2', null, field(T.subMode, mode), field(T.maxBitrate, br)), field(T.skipMode, skipSel), h('label.check', null, auto, T.autoplayNext));
+    h('div.grid2', null, field(T.subMode, mode), field(T.maxBitrate, br)), field(T.skipMode, skipSel), h('label.check', null, auto, T.autoplayNext), h('label.check', null, snowOn, T.snow));
   modal(isNew ? T.addProfile : p.name, body, close => [
     !isNew && state.me.profiles.length > 1 && h('button.btn.danger', { class: 'push', onclick: async () => {
       if (!(await confirmBox(T.confirmDelete(p.name)))) return;
@@ -897,7 +940,7 @@ function profileEditor(p) {
     } }, T.delete),
     h('button.btn', { onclick: close }, T.cancel),
     h('button.btn.primary', { onclick: async () => {
-      const body = { name: name.value, color, is_kids: kids.checked, max_rating_level: +lvl.value, sub_langs: subs.value, audio_langs: auds.value, sub_mode: mode.value, autoplay_next: auto.checked, max_bitrate: +br.value, skip_intro: skipSel.value };
+      const body = { name: name.value, color, is_kids: kids.checked, max_rating_level: +lvl.value, sub_langs: subs.value, audio_langs: auds.value, sub_mode: mode.value, autoplay_next: auto.checked, max_bitrate: +br.value, skip_intro: skipSel.value, snow: snowOn.checked };
       if (pin.value) body.pin = pin.value; else if (removePin.checked) body.pin = '';
       if (isNew) await POST('/api/profiles', body); else await api('PATCH', '/api/profiles/' + p.id, body);
       close(); toast(T.saved); viewProfiles(!isNew);
@@ -1741,8 +1784,20 @@ async function viewAccount() {
     h('div.panel', { class: 'narrow' }, h('h2', null, T.changePw), field(T.currentPw, cur), field(T.newPw, nw),
       h('button.btn.primary', { onclick: async () => { await POST('/api/me/password', { current: cur.value, new: nw.value }); cur.value = nw.value = ''; toast(T.saved); } }, T.save)),
     h('div.panel', { class: 'narrow' }, h('h2', null, T.language), langSwitch()),
+    snowPanel(),
     devicesPanel(),
     h('p.muted', null, `${state.me.user.username} · ${state.me.server_name} · ${T.version} ${state.me.version}`));
+}
+
+// the current profile's snowfall switch; saved on the server, so it follows the profile to every device
+function snowPanel() {
+  const p = state.me.profile;
+  const box = h('input', { type: 'checkbox', checked: p.snow !== false, disabled: p.is_kids || state.me.profile_locked, onchange: async e => {
+    const on = e.target.checked;
+    try { await api('PATCH', '/api/profiles/' + p.id, { snow: on }); p.snow = on; snow(); toast(T.saved); }
+    catch { e.target.checked = !on; }
+  } });
+  return h('div.panel', { class: 'narrow' }, h('h2', null, T.appearance), h('label.check', null, box, T.snow), h('p.hint', null, T.snowHint));
 }
 
 function deviceRow(d, onChange, showUser) {
