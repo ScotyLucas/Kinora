@@ -1919,7 +1919,10 @@ async function viewJournal(q) {
   else if (prevFrom && prev === null) main.append(h('p.muted.small.j-vs', null, T.jVsFail));
   if (per === 'year') main.append(goalBlock(films.length));
   // the year as a story sits with the page's own actions
-  if (per === 'year' || per === 'last') headActs.prepend(h('button.btn', { type: 'button', onclick: () => openRecap() }, icon('play'), T.jRecap));
+  // last year's story only in January 1–15, like the monthly card in the first week
+  const today = new Date(), canRecap = per === 'year' || (per === 'last' && today.getMonth() === 0 && today.getDate() <= 15);
+  if (canRecap) headActs.prepend(h('button.btn', { type: 'button', onclick: () => openRecap() }, icon('play'), T.jRecap));
+  if (canRecap && q.get('recap') === '1' && evs.length) setTimeout(() => openRecap()); // the yearly recap notification opens it
 
   // timeline: one bar per day, month or year; a click lists that bucket's titles
   const d0 = from.getTime() ? from : new Date(new Date(evs[0].at * 1000).getFullYear(), 0, 1);

@@ -408,3 +408,53 @@ func TestLongMessageIsShortened(t *testing.T) {
 func itoa(n int64) string { return fmtInt(n) }
 
 func fmtInt(n int64) string { b, _ := json.Marshal(n); return string(b) }
+
+func TestRecapIsToldOncePerProfile(t *testing.T) {
+	st, rl, n := setup(t)
+	clock := time.Date(2026, time.November, 2, 11, 0, 0, 0, time.Local)
+	n.SetClock(func() time.Time { return clock })
+	u, _ := st.CreateUser("anna", "secret123", false)
+	name := func(s string) *string { return &s }
+	p, _ := st.CreateProfile(u.ID, store.ProfileInput{Name: name("Anna")})
+	idle, _ := st.CreateProfile(u.ID, store.ProfileInput{Name: name("Idle")})
+	k := pairWith(t, st, u.ID, p.ID, strings.Repeat("r", 43), store.PushPrefs{})
+	pairWith(t, st, u.ID, idle.ID, strings.Repeat("i", 43), store.PushPrefs{})
+	watched := func(at time.Time) {
+		if _, err := st.DB.Exec(`INSERT INTO watch_events(profile_id,item_id,kind,title,runtime_sec,watched_at) VALUES(?,NULL,'movie','Heat',6000,?)`, p.ID, at.Unix()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	watched(time.Date(2026, time.October, 12, 20, 0, 0, 0, time.Local))
+	watched(time.Date(2025, time.March, 3, 20, 0, 0, 0, time.Local))
+
+	n.Tick(context.Background())
+	n.Tick(context.Background())
+	sent, _, _ := rl.Snapshot()
+	if len(sent) != 1 || sent[0].Handle != strings.Repeat("r", 43) {
+		t.Fatalf("sent %+v, want one to the profile that watched", sent)
+	}
+	var m push.Message
+	open(t, k, sent[0].Payload, &m)
+	if m.Type != "recap" || !strings.Contains(m.Body, "októberben") || m.Href != "#/journal?p=year&b=9" {
+		t.Fatalf("%+v", m)
+	}
+
+	clock = time.Date(2026, time.November, 9, 11, 0, 0, 0, time.Local) // past the first week: nothing
+	n.Tick(context.Background())
+	clock = time.Date(2027, time.January, 3, 9, 0, 0, 0, time.Local) // too early in the day
+	n.Tick(context.Background())
+	if sent, _, _ := rl.Snapshot(); len(sent) != 1 {
+		t.Fatalf("sent %d, want still 1", len(sent))
+	}
+	clock = time.Date(2026, time.January, 3, 11, 0, 0, 0, time.Local) // January: the year, not December
+	n.Tick(context.Background())
+	n.Tick(context.Background())
+	sent, _, _ = rl.Snapshot()
+	if len(sent) != 2 {
+		t.Fatalf("sent %d, want 2", len(sent))
+	}
+	open(t, k, sent[1].Payload, &m)
+	if m.Type != "recap_year" || !strings.Contains(m.Title, "2025") || m.Href != "#/journal?p=last&recap=1" {
+		t.Fatalf("%+v", m)
+	}
+}

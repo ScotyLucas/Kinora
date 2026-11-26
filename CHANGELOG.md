@@ -5,6 +5,20 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.96 – 2026-11-26
+
+- **Új (iPhone, iPad):** értesítés, amikor elkészül a havi összesítő (a hónap első hetében, délelőtt 10 után, ha az előző
+  hónapban volt nézés), januárban pedig az éves összefoglaló; magyarul, angolul és németül. Az értesítésre koppintva a
+  Napló a hónappal, illetve az éves összefoglalóval nyílik. A beállításokban „Havi és éves összesítő” néven kapcsolható ki.
+- **Változott (web, iPhone, iPad):** a tavalyi éves összefoglaló csak január 1. és 15. között nézhető meg; az ideit
+  továbbra is bármikor. Az iOS-alkalmazás 1.1.96-os.
+- **New (iPhone, iPad):** a notification when the monthly recap is ready (in the first week of the month, after 10 am, if
+  you watched anything the month before), and in January the year in review; in Hungarian, English and German. Tapping it
+  opens the Journal on that month, or straight into the year in review. It can be turned off in settings as "Monthly and
+  yearly recap".
+- **Changed (web, iPhone, iPad):** last year's year in review can only be opened from January 1 to 15; this year's still
+  any time. The iOS app is 1.1.96.
+
 ## 1.1.95 – 2026-11-26
 
 - **Új (web, iPhone, iPad):** megújult Napló: nagy fejléc az időszakkal, saját időszakválasztó (telefonon két sorban),

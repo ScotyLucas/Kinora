@@ -23,16 +23,17 @@ const (
 	CatRequests      = "requests"       // the device's own requests: approved, denied, failed, arrived
 	CatEpisodes      = "episodes"       // new episodes of series the profile follows
 	CatAdminRequests = "admin_requests" // admins: someone asked for something
+	CatRecap         = "recap"          // the Napló's monthly recap is ready (early in the month)
 )
 
 // Categories lists every category, in the order the app shows them.
-var Categories = []string{CatRequests, CatEpisodes, CatAdminRequests}
+var Categories = []string{CatRequests, CatEpisodes, CatRecap, CatAdminRequests}
 
 // Message is the plaintext the iOS Notification Service Extension decrypts. Title and body are
 // already in the device's language.
 type Message struct {
 	V     int    `json:"v"`
-	Type  string `json:"type"` // request_approved | request_denied | request_failed | request_available | request_new | episodes | test
+	Type  string `json:"type"` // request_approved | request_denied | request_failed | request_available | request_new | episodes | recap | test
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	Item  int64  `json:"item,omitempty"`  // library item to open
@@ -124,6 +125,7 @@ func (n *Notifier) Tick(ctx context.Context) {
 	}
 	n.requests(ctx, devs)
 	n.episodes(ctx, devs)
+	n.recap(ctx, devs)
 	n.live(ctx, devs)
 }
 
@@ -340,6 +342,112 @@ func (n *Notifier) episodeMessage(seriesID int64, eps []store.NewEpisode, p *sto
 	}
 	m.Body = T("Új rész: {0}", label)
 	return m, true
+}
+
+// --- monthly and yearly recap ------------------------------------------------------
+
+const (
+	recapLastDay     = 7                       // the home page shows last month's recap card until this day
+	recapYearLastDay = 15                      // last year's recap can be opened until January 15
+	recapHour        = 10                      // not before this hour of the server's day
+	recapSent        = "push_recap_sent."      // + profile id: the last month (YYYY-MM) told about
+	recapYearSent    = "push_recap_year_sent." // + profile id: the last year (YYYY) told about
+)
+
+// recapMonthsIn are the Hungarian "in <month>" forms, the source texts of the translations.
+var recapMonthsIn = [12]string{"januárban", "februárban", "márciusban", "áprilisban", "májusban", "júniusban",
+	"júliusban", "augusztusban", "szeptemberben", "októberben", "novemberben", "decemberben"}
+
+// RecapYearOpen reports whether last year's recap can be opened on day t: January 1–15.
+func RecapYearOpen(t time.Time) bool { return t.Month() == time.January && t.Day() <= recapYearLastDay }
+
+// recap tells each profile once that last month's recap is ready (days 1–7), or in January that last
+// year's is (days 1–15, instead of December's), if it watched anything in that period.
+func (n *Notifier) recap(ctx context.Context, devs []store.PushIOS) {
+	now := n.now()
+	if now.Hour() < recapHour {
+		return
+	}
+	yearly := RecapYearOpen(now)
+	if !yearly && now.Day() > recapLastDay {
+		return
+	}
+	from := time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
+	to := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	ym, keyBase := from.Format("2006-01"), recapSent
+	if yearly {
+		from = time.Date(now.Year()-1, time.January, 1, 0, 0, 0, 0, now.Location())
+		ym, keyBase = from.Format("2006"), recapYearSent
+	}
+	byProfile := map[int64][]store.PushIOS{}
+	var order []int64
+	for _, d := range devs {
+		if d.ProfileID == 0 || !d.Wants(CatRecap) {
+			continue
+		}
+		if byProfile[d.ProfileID] == nil {
+			order = append(order, d.ProfileID)
+		}
+		byProfile[d.ProfileID] = append(byProfile[d.ProfileID], d)
+	}
+	for _, pid := range order {
+		if ctx.Err() != nil {
+			return
+		}
+		key := keyBase + strconv.FormatInt(pid, 10)
+		if n.st.Setting(key) >= ym {
+			continue
+		}
+		p, err := n.st.Profile(pid)
+		if err != nil || p == nil {
+			continue
+		}
+		cnt, err := n.st.JournalCount(pid, from.Unix(), to.Unix())
+		if err != nil {
+			n.log.Warn("push: recap", "profile", pid, "err", err)
+			continue
+		}
+		done := func() {
+			n.st.SetSetting(key, ym)
+			if yearly { // December is in the yearly one
+				n.st.SetSetting(recapSent+strconv.FormatInt(pid, 10), to.AddDate(0, -1, 0).Format("2006-01"))
+			}
+		}
+		if cnt == 0 || (!yearly && p.JournalRecapSeen >= ym) {
+			done()
+			continue
+		}
+		var failed bool
+		for _, d := range byProfile[pid] {
+			if err := n.SendDevice(ctx, d, n.recapMessage(from, yearly, cnt, d.Lang)); err != nil {
+				n.log.Warn("push: recap", "profile", pid, "err", err)
+				failed = failed || retryable(err)
+			}
+		}
+		if failed {
+			return // the relay is down: try again on the next tick
+		}
+		done()
+	}
+}
+
+func (n *Notifier) recapMessage(from time.Time, yearly bool, count int, lang string) Message {
+	T := n.text(lang)
+	if yearly {
+		y := from.Year()
+		return Message{V: 1, Type: "recap_year", Tag: fmt.Sprintf("recap-%d", y),
+			Title: T("Elkészült az éves összefoglalód: {0}", y),
+			Body:  T("{0} nézés egy év alatt. Január 15-ig nézheted meg, milyen éved volt.", count),
+			Href:  "#/journal?p=last&recap=1"}
+	}
+	per := "year"
+	if from.Month() == time.December {
+		per = "last"
+	}
+	return Message{V: 1, Type: "recap", Tag: "recap-" + from.Format("2006-01"),
+		Title: T("Elkészült a havi összesítőd"),
+		Body:  T("Nézd meg, mit és mennyit néztél {0}: {1} nézés a naplódban.", T(recapMonthsIn[from.Month()-1]), count),
+		Href:  fmt.Sprintf("#/journal?p=%s&b=%d", per, int(from.Month())-1)}
 }
 
 // --- live downloads ---------------------------------------------------------------

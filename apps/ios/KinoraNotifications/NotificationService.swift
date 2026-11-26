@@ -31,6 +31,10 @@ final class NotificationService: UNNotificationServiceExtension, @unchecked Send
         let pairing = push.pairing(relayServer: s)
         if let pairing { content.userInfo[PushKeys.server] = pairing.savedServerId }
         if let item = message.item { content.userInfo[PushKeys.link] = KinoraLink.item(Int(item)).url.absoluteString }
+        // The recaps open the Napló with the web link's period and month.
+        if message.type?.hasPrefix("recap") == true, let href = message.href, let q = href.split(separator: "?", maxSplits: 1).dropFirst().first {
+            content.userInfo[PushKeys.link] = "\(KinoraLink.scheme)://journal?\(q)"
+        }
 
         let servers = ServerStore.shared()
         guard let image = message.image, image.hasPrefix("/"), let pairing,

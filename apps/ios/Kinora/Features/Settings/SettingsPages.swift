@@ -412,6 +412,7 @@ struct NotificationSettingsView: View {
         switch category {
         case PushCategory.requests: L("Kéréseim")
         case PushCategory.episodes: L("Új részek a követett sorozatokból")
+        case PushCategory.recap: L("Havi és éves összesítő")
         case PushCategory.adminRequests: L("Új kérések (rendszergazda)")
         default: category
         }
@@ -421,6 +422,7 @@ struct NotificationSettingsView: View {
         switch category {
         case PushCategory.requests: "film.stack"
         case PushCategory.episodes: "sparkles.tv"
+        case PushCategory.recap: "chart.bar.xaxis"
         case PushCategory.adminRequests: "tray.full"
         default: "bell"
         }

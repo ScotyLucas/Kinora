@@ -41,6 +41,7 @@ public struct PushPrefs: Codable, Sendable, Equatable {
 public enum PushCategory {
     public static let requests = "requests"
     public static let episodes = "episodes"
+    public static let recap = "recap"
     public static let adminRequests = "admin_requests"
 }
 

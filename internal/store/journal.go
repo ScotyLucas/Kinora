@@ -112,6 +112,13 @@ func intPtr(n sql.NullInt64) *int {
 	return &v
 }
 
+// JournalCount returns how many viewings a profile has in [from, to).
+func (s *Store) JournalCount(profileID, from, to int64) (int, error) {
+	var n int
+	err := s.DB.QueryRow(`SELECT COUNT(*) FROM watch_events WHERE profile_id=? AND watched_at>=? AND watched_at<?`, profileID, from, to).Scan(&n)
+	return n, err
+}
+
 // SetJournalRecapSeen records that the profile closed (or opened) the recap card of a month (YYYY-MM).
 func (s *Store) SetJournalRecapSeen(profileID int64, month string) error {
 	_, err := s.DB.Exec(`UPDATE profiles SET journal_recap_seen=? WHERE id=?`, month, profileID)

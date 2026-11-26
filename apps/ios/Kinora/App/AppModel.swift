@@ -50,6 +50,8 @@ final class AppModel {
     var journalVisible = false
     /// Where the Napló opens next: a period and a bucket to select (the home page's monthly card); nil: this month.
     var journalStart: (period: JournalPeriod, bucket: Int)?
+    /// The Napló opens straight into the year's story (the yearly recap notification).
+    var journalOpenRecap = false
     /// The Napló widget was tapped: open the Napló once on home.
     private var journalPending = false
     /// A watch party could not be started or joined (shown as an alert, or on the join screen).
@@ -767,7 +769,7 @@ final class AppModel {
         }
         // kinora://journal, from the Napló widget: this month's Napló (once on home).
         if url.scheme == KinoraLink.scheme, url.host() == "journal" {
-            journalStart = nil
+            setJournalStart(url)
             journalPending = true
             return handlePendingLink()
         }
@@ -799,10 +801,24 @@ final class AppModel {
         goToServer(h.serverId, elsewhere: L("Ez a cím egy másik Kinora-szerveren megy, amelyre ezen az eszközön nem vagy bejelentkezve."))
     }
 
+    /// kinora://journal?p=year|last&b=<month 0–11>&recap=1: the period, month and story to open with.
+    private func setJournalStart(_ url: URL) {
+        let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let v = { (k: String) in q.first { $0.name == k }?.value }
+        let period: JournalPeriod? = v("p") == "year" ? .year : v("p") == "last" ? .lastYear : nil
+        journalStart = period.map { ($0, v("b").flatMap(Int.init).map { $0 + 1 } ?? -1) }
+        journalOpenRecap = v("recap") == "1"
+    }
+
     /// A tapped notification: its title, on the server that sent it.
     func openNotification(serverId: String?, url: URL) {
-        guard let link = KinoraLink(url: url) else { return }
-        pendingLink = link
+        if url.scheme == KinoraLink.scheme, url.host() == "journal" {
+            setJournalStart(url)
+            journalPending = true
+        } else {
+            guard let link = KinoraLink(url: url) else { return }
+            pendingLink = link
+        }
         pendingStart = nil
         // Still starting up on that server: home picks the link up when it appears.
         guard let serverId, screen != .launching || store.currentID != serverId else { return }

@@ -10,11 +10,11 @@ struct JournalSheet: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            JournalView(start: model.journalStart) { path.append($0) }
+            JournalView(start: model.journalStart, openRecap: model.journalOpenRecap) { path.append($0) }
                 .browseDestinations()
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("Bezárás")) { dismiss() } } }
         }
-        .onDisappear { model.journalStart = nil }
+        .onDisappear { model.journalStart = nil; model.journalOpenRecap = false }
     }
 }
 
@@ -38,6 +38,8 @@ struct JournalView: View {
     @State private var goalError: String?
     /// The bucket to select on the first load instead of the latest one.
     @State private var startBucket: Int?
+    /// Open the year as a story once it is loaded (the yearly recap notification).
+    @State private var startRecap: Bool
     /// The period's viewings and what is worked out from them beyond the summary.
     @State private var events: [JournalEvent] = []
     @State private var insights: JournalInsights?
@@ -52,8 +54,9 @@ struct JournalView: View {
     @State private var deletingViewing: JournalEvent?
     @State private var actionError: String?
 
-    init(start: (period: JournalPeriod, bucket: Int)? = nil, open: @escaping (Item) -> Void) {
+    init(start: (period: JournalPeriod, bucket: Int)? = nil, openRecap: Bool = false, open: @escaping (Item) -> Void) {
         self.open = open
+        _startRecap = State(initialValue: openRecap)
         _period = State(initialValue: start?.period ?? .month)
         _startBucket = State(initialValue: start?.bucket)
     }
@@ -162,8 +165,9 @@ struct JournalView: View {
             nth = Dictionary(zip(evs.map(Self.viewKey), ins.nth), uniquingKeysWith: { a, _ in a })
             stars = [:]
             summary = s
-            selected = startBucket ?? s.latestBucket?.key
+            selected = startBucket.flatMap { k in s.buckets.contains { $0.key == k } ? k : nil } ?? s.latestBucket?.key
             startBucket = nil
+            if startRecap { startRecap = false; recapVisible = canRecap && !s.isEmpty }
             error = nil
             card = nil
             await loadExtras()
@@ -355,9 +359,17 @@ struct JournalView: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 
+    /// This year's story any time; last year's only from January 1 to 15.
+    private var canRecap: Bool {
+        if period == .year { return true }
+        guard period == .lastYear else { return false }
+        let c = Calendar.current.dateComponents([.month, .day], from: Date())
+        return c.month == 1 && (c.day ?? 99) <= 15
+    }
+
     /// The year as a story (this year and last) and a viewing seen somewhere else.
     @ViewBuilder private var actions: some View {
-        let recap = (period == .year || period == .lastYear) && summary.map { !$0.isEmpty } == true
+        let recap = canRecap && summary.map { !$0.isEmpty } == true
         if recap || canEditJournal {
             let recapButton = Button { recapVisible = true } label: {
                 Label(L("Éves összefoglaló"), systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 30)
