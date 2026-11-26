@@ -5,6 +5,14 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.91 – 2026-11-26
+
+- **Újdonság (iPhone, iPad):** megújult widgetek: hátralévő idő, ✓ gomb a közepes Folytatáson is és azonnali
+  eltűnéssel, ajánlás üres Folytatás helyett, cím a kis „Új a könyvtárban” widgeten, nagy Következő rész és Napló
+  widget, elavult adatnál az időpont, Vezérlőközpont-gomb (iOS 18), színezett mód és StandBy.
+- **New (iPhone, iPad):** reworked widgets: time left, the ✓ button on the medium Continue too and gone at once,
+  suggestions instead of an empty Continue, titles on the small "New in library", large Next episode and Journal
+  widgets, the time of stale data, a Control Center control (iOS 18), tinted mode and StandBy.
 - **Újdonság (web, iOS, tvOS):** a lejátszóban a hátralévő időre kattintva az látszik, hány órakor ér véget a film (pl. 22:38,
   a lejátszási sebességgel számolva); újabb kattintás visszavált. Apple TV-n a
   kiválasztó gomb hosszan nyomva vált. A választás megmarad.

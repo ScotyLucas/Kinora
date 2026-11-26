@@ -1130,6 +1130,17 @@
    "episode": "Episode"
   },
   "app": {
+   "Kezdd el valami újat": "Start something new",
+   "ÚJ · KEZDD EL": "NEW · START IT",
+   "ÚJ": "NEW",
+   "A szerver most nem érhető el. Adatok: {0}": "The server can't be reached right now. Data from {0}",
+   "Ez az évad utolsó része.": "This is the last episode of the season.",
+   "Kinora – folytatás": "Kinora – continue",
+   "Ott folytatja a lejátszást, ahol legutóbb abbahagytad.": "Picks up playback where you last left off.",
+   "A hónap kedvencei": "Top of the month",
+   "annyi, mint a múlt hónapban": "same as last month",
+   "{0} több, mint a múlt hónapban": "{0} more than last month",
+   "{0} kevesebb, mint a múlt hónapban": "{0} fewer than last month",
    "Befejezés: {0}": "Ends at {0}",
    "{0}, befejezés: {1}": "{0}, ends at {1}",
    "Vált a hátralévő idő és a befejezés időpontja között.": "Switches between the time left and the time the film ends.",

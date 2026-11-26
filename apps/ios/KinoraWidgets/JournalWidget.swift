@@ -12,6 +12,10 @@ struct JournalStat: Codable, Equatable {
     var days: [Int]
     /// The index of today in `days` (later days are still ahead).
     var today: Int
+    /// Viewings of last month up to the same day, for the arrow; nil when unknown.
+    var previous: Int?
+    /// The month's most watched titles (the large widget), most first.
+    var top: [String]?
 
     var total: Int { films + episodes }
 }
@@ -26,6 +30,7 @@ struct JournalEntry: TimelineEntry {
     var date: Date
     var state: State
     var stale = false
+    var updated: Date?
 }
 
 enum JournalFeed {
@@ -37,9 +42,17 @@ enum JournalFeed {
         do {
             let evs = try await client.journal(from: r.from, to: r.to)
             let s = JournalSummary(events: evs, period: .month, now: now, calendar: cal)
+            // Last month up to the same point, as the Napló compares.
+            var previous: Int?
+            if let p = JournalPeriod.month.previousRange(now: now, calendar: cal),
+               let samePoint = cal.date(byAdding: .month, value: -1, to: now),
+               let past = try? await client.journal(from: p.from, to: p.to) {
+                previous = past.filter { $0.date <= samePoint }.count
+            }
             let stat = JournalStat(month: r.from, films: s.films, episodes: s.episodes,
                                    days: s.buckets.map(\.events.count),
-                                   today: cal.component(.day, from: now) - 1)
+                                   today: cal.component(.day, from: now) - 1,
+                                   previous: previous, top: s.topTitles.prefix(3).map(\.title))
             save(stat)
             return JournalEntry(date: now, state: .stat(stat))
         } catch KinoraError.unauthorized {
@@ -47,7 +60,8 @@ enum JournalFeed {
         } catch {
             // Last month's numbers are no answer for this month.
             if let c = cached(), cal.isDate(c.month, equalTo: now, toGranularity: .month) {
-                return JournalEntry(date: now, state: .stat(c), stale: true)
+                let at = file.flatMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
+                return JournalEntry(date: now, state: .stat(c), stale: true, updated: at)
             }
             return JournalEntry(date: now, state: .offline)
         }
@@ -108,7 +122,7 @@ struct JournalWidget: Widget {
         }
         .configurationDisplayName(L("Napló"))
         .description(L("Hány filmet és epizódot láttál ebben a hónapban."))
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular, .accessoryInline])
     }
 }
 
@@ -127,6 +141,7 @@ struct JournalWidgetView: View {
                 case .accessoryInline: inline(s)
                 case .accessoryRectangular: rectangular(s)
                 case .systemMedium: medium(s)
+                case .systemLarge: large(s)
                 default: small(s)
                 }
             case .signedOut:
@@ -149,7 +164,7 @@ struct JournalWidgetView: View {
             kicker(s)
             Spacer(minLength: 0)
             Text(String(s.total)).font(Palette.display(48)).foregroundStyle(Palette.amber)
-                .minimumScaleFactor(0.5).lineLimit(1).contentTransition(.numericText())
+                .minimumScaleFactor(0.5).lineLimit(1).contentTransition(.numericText()).widgetAccentable()
             Text(L("{0} film", s.films) + " · " + L("{0} epizód", s.episodes))
                 .font(.caption2).foregroundStyle(Palette.plaster).lineLimit(1).minimumScaleFactor(0.7)
             Spacer(minLength: 0)
@@ -164,7 +179,7 @@ struct JournalWidgetView: View {
                 kicker(s)
                 Spacer(minLength: 0)
                 Text(String(s.total)).font(Palette.display(56)).foregroundStyle(Palette.amber)
-                    .minimumScaleFactor(0.5).lineLimit(1).contentTransition(.numericText())
+                    .minimumScaleFactor(0.5).lineLimit(1).contentTransition(.numericText()).widgetAccentable()
                 Text(Self.word(L("{0} nézés", s.total), s.total)).font(.caption).foregroundStyle(Palette.plaster).lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -179,6 +194,48 @@ struct JournalWidgetView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
+    }
+
+    /// The month in full: the count against last month, films and episodes, the days, the top titles.
+    private func large(_ s: JournalStat) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            kicker(s)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(String(s.total)).font(Palette.display(64)).foregroundStyle(Palette.amber)
+                    .lineLimit(1).contentTransition(.numericText()).widgetAccentable()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Self.word(L("{0} nézés", s.total), s.total)).font(.caption).foregroundStyle(Palette.plaster)
+                    if let delta = comparison(s) { delta }
+                }
+            }
+            HStack(spacing: 18) {
+                figure(s.films, L("{0} film", s.films))
+                figure(s.episodes, L("{0} epizód", s.episodes))
+            }
+            JournalBars(stat: s).frame(height: 64)
+            if let top = s.top, !top.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(L("A hónap kedvencei")).font(.caption.weight(.bold)).foregroundStyle(Palette.plaster)
+                    ForEach(Array(top.enumerated()), id: \.offset) { i, t in
+                        HStack(spacing: 8) {
+                            Text("\(i + 1)").font(Palette.display(15)).foregroundStyle(Palette.amber).frame(width: 14)
+                            Text(t).font(.system(size: 14, weight: .medium)).foregroundStyle(Palette.bright).lineLimit(1)
+                        }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// "▲ 4 more than last month" up to the same day.
+    private func comparison(_ s: JournalStat) -> Text? {
+        guard let p = s.previous else { return nil }
+        let d = s.total - p
+        let text = d == 0 ? L("annyi, mint a múlt hónapban") :
+            d > 0 ? "▲ " + L("{0} több, mint a múlt hónapban", d) : "▼ " + L("{0} kevesebb, mint a múlt hónapban", -d)
+        return Text(text).font(Palette.meta).foregroundStyle(d >= 0 ? Palette.amber : Palette.muted)
     }
 
     private func rectangular(_ s: JournalStat) -> some View {
@@ -198,7 +255,7 @@ struct JournalWidgetView: View {
         HStack(spacing: 4) {
             Image(systemName: "chart.bar.xaxis").imageScale(.small)
             Text(monthName(s)).lineLimit(1)
-            if entry.stale { Image(systemName: "wifi.slash").imageScale(.small) }
+            if entry.stale { StaleBadge(updated: entry.updated, plain: true) }
         }
         .font(.caption.weight(.bold)).foregroundStyle(Palette.plaster)
     }
@@ -213,9 +270,13 @@ struct JournalWidgetView: View {
         .accessibilityLabel(label)
     }
 
-    /// "18 nézés" → "nézés": the label under a big number that already says 18.
+    /// "18 nézés" → "nézés": the label under a big number that already says 18. Only a number standing as a
+    /// word at the start or the end is taken off; a translation that puts it elsewhere keeps its whole text.
     private static func word(_ label: String, _ n: Int) -> String {
-        label.replacingOccurrences(of: String(n), with: "").trimmingCharacters(in: .whitespaces)
+        let num = String(n)
+        if label.hasPrefix(num + " ") { return String(label.dropFirst(num.count + 1)) }
+        if label.hasSuffix(" " + num) { return String(label.dropLast(num.count + 1)) }
+        return label
     }
 
     private func message(_ text: String, icon: String) -> some View {

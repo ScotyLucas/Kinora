@@ -155,18 +155,23 @@ struct MarkWatchedIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         guard let client = Feed.client() else { return .result() }
         _ = try await client.setPlayed(itemId, true)
+        // Gone at once from every widget (the series, the Napló count too), not at the next refresh.
+        Feed.forget(itemId)
+        WidgetCenter.shared.reloadAllTimelines()
         return .result()
     }
 }
 
 struct WatchedButton: View {
     var id: Int
+    /// On top of a picture: a dark disc behind the mark, so it reads on any still.
+    var onImage = false
 
     var body: some View {
         Button(intent: MarkWatchedIntent(itemId: id)) {
-            Image(systemName: "checkmark.circle")
+            Image(systemName: onImage ? "checkmark.circle.fill" : "checkmark.circle")
                 .font(.title2)
-                .foregroundStyle(Palette.muted)
+                .foregroundStyle(onImage ? Palette.bright : Palette.muted, Palette.black.opacity(0.55))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L("Megnézettnek jelölés"))
@@ -182,7 +187,7 @@ struct SeriesWidget: Widget {
         }
         .configurationDisplayName(L("Következő rész"))
         .description(L("Egy kiválasztott sorozat következő része, egy koppintással indítható."))
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryRectangular])
         .contentMarginsDisabled()
     }
 }
@@ -209,6 +214,8 @@ struct SeriesView: View {
             .widgetURL(card?.link)
         } else if entry.seriesTitle == nil {
             message(L("Tartsd lenyomva, és válassz egy sorozatot a widget szerkesztésénél."))
+        } else if let card, family == .systemLarge {
+            large(card)
         } else if let card {
             ZStack(alignment: .bottomLeading) {
                 Artwork(data: card.image, seed: card.id)
@@ -224,11 +231,15 @@ struct SeriesView: View {
                 }
                 .padding(12)
                 if family == .systemMedium {
-                    WatchedButton(id: card.id)
+                    WatchedButton(id: card.id, onImage: true)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                         .padding(10)
                 }
             }
+            .overlay(alignment: .topLeading) {
+                if entry.feed.stale { StaleBadge(updated: entry.feed.updated).padding(10) }
+            }
+            .invalidatableContent()
             .widgetURL(card.link)
         } else if entry.feed.state == .empty {
             message(L("{0} – minden részt láttál.", entry.seriesTitle ?? ""))
@@ -237,11 +248,98 @@ struct SeriesView: View {
         }
     }
 
+    /// The next episode big, the rest of the season below it, and how far the season is.
+    private func large(_ card: Card) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                Artwork(data: card.image, seed: card.id)
+                LinearGradient(colors: [.clear, Palette.black], startPoint: .center, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L("KÖVETKEZŐ RÉSZ")).font(.caption2.weight(.bold)).foregroundStyle(Palette.amber).widgetAccentable()
+                    Text(card.title).font(Palette.display(22)).foregroundStyle(Palette.bright).lineLimit(1)
+                    if let sub = card.subtitle { Text(sub).font(Palette.meta).foregroundStyle(Palette.plaster).lineLimit(1) }
+                    if let p = card.progress { Bar(value: p).padding(.top, 2) }
+                }
+                .padding(14)
+            }
+            .frame(maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) {
+                HStack(spacing: 8) {
+                    WatchedButton(id: card.id, onImage: true)
+                    Link(destination: card.link) {
+                        Image(systemName: "play.circle.fill").font(.largeTitle)
+                            .foregroundStyle(Palette.amber, Palette.black.opacity(0.55)).widgetAccentable()
+                    }
+                    .accessibilityLabel(L("Lejátszás"))
+                }
+                .padding(10)
+            }
+            .overlay(alignment: .topLeading) {
+                if entry.feed.stale { StaleBadge(updated: entry.feed.updated).padding(10) }
+            }
+            .invalidatableContent()
+            VStack(alignment: .leading, spacing: 8) {
+                if let season = card.season, season.total > 0 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(L("{0}. évad", season.number)).font(.caption.weight(.bold)).foregroundStyle(Palette.plaster)
+                            Spacer()
+                            Text("\(season.watched)/\(season.total)").font(Palette.meta).foregroundStyle(Palette.muted)
+                        }
+                        Bar(value: Double(season.watched) / Double(season.total))
+                    }
+                }
+                ForEach(card.upcoming ?? [], id: \.id) { u in
+                    Link(destination: u.link) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill").font(.caption2).foregroundStyle(Palette.amber).widgetAccentable()
+                            Text(u.label).font(.system(size: 14, weight: .medium)).foregroundStyle(Palette.bright).lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+                if card.upcoming?.isEmpty ?? true {
+                    Text(L("Ez az évad utolsó része.")).font(Palette.meta).foregroundStyle(Palette.muted)
+                }
+            }
+            .padding(14)
+        }
+        .widgetURL(card.link)
+    }
+
     private func message(_ text: String) -> some View {
         Text(text)
             .font(.footnote)
             .foregroundStyle(Palette.muted)
             .multilineTextAlignment(.center)
             .padding(14)
+    }
+}
+
+// MARK: - Control Center
+
+/// Plays the title the "continue" widget shows first; with nothing saved, opens the app.
+@available(iOS 18.0, *)
+struct ResumeControlIntent: AppIntent {
+    static let title: LocalizedStringResource = "Folytatás"
+    static let description = IntentDescription("Ott folytatja a lejátszást, ahol legutóbb abbahagytad.")
+    static let isDiscoverable = false
+
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent: OpenURLIntent(Feed.lastContinueLink() ?? appLink))
+    }
+}
+
+/// A Control Center, lock screen and Action button control: one press, and the last title plays on.
+@available(iOS 18.0, *)
+struct ResumeControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "io.github.scotylucas.kinora.resume") {
+            ControlWidgetButton(action: ResumeControlIntent()) {
+                Label(L("Folytatás"), systemImage: "play.rectangle.fill")
+            }
+        }
+        .displayName(LocalizedStringResource(stringLiteral: L("Kinora – folytatás")))
+        .description(LocalizedStringResource(stringLiteral: L("Ott folytatja a lejátszást, ahol legutóbb abbahagytad.")))
     }
 }

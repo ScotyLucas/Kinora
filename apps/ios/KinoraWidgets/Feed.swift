@@ -13,6 +13,28 @@ struct Card: Codable, Hashable, Identifiable {
     var progress: Double?
     var image: Data?
     var link: URL
+    /// Seconds still to watch, for started titles.
+    var remaining: Double?
+    /// Not started yet: offered because there is nothing to continue.
+    var suggested: Bool?
+    /// The series' next episodes after this one (the large "Next episode" widget).
+    var upcoming: [Upcoming]?
+    /// Watched and all episodes of the season, for the season bar.
+    var season: SeasonProgress?
+
+    struct Upcoming: Codable, Hashable { var id: Int; var label: String; var link: URL }
+    struct SeasonProgress: Codable, Hashable { var number: Int; var watched: Int; var total: Int }
+
+    var isSuggestion: Bool { suggested == true }
+}
+
+/// "Még 42 perc": the time left of a started title, in the app's language.
+func timeLeft(_ seconds: Double?) -> String? {
+    guard let s = seconds, s > 0 else { return nil }
+    let minutes = max(1, Int((s / 60).rounded()))
+    let h = minutes / 60, m = minutes % 60
+    let span = h == 0 ? L("{0} perc", m) : (m == 0 ? L("{0} óra", h) : L("{0} ó {1} perc", h, m))
+    return L("Még {0}", span)
 }
 
 struct FeedEntry: TimelineEntry {
@@ -27,6 +49,8 @@ struct FeedEntry: TimelineEntry {
     var state: State
     /// From the last good fetch, because the server could not be reached now.
     var stale = false
+    /// When the shown data was fetched, for a stale entry.
+    var updated: Date?
 
     var cards: [Card] {
         if case .cards(let c) = state { c } else { [] }
@@ -51,7 +75,19 @@ enum Feed {
             let items: [Item]
             switch kind {
             case .continueWatching:
-                items = WidgetFeed.continueWatching(try await client.home())
+                let home = try await client.home()
+                items = WidgetFeed.continueWatching(home)
+                // Nothing to continue: offer the newest titles instead of an empty widget.
+                if items.isEmpty {
+                    var cards: [Card] = []
+                    for item in WidgetFeed.recentlyAdded(home).prefix(2) {
+                        var c = await card(item, kind: kind, client: client)
+                        c.suggested = true
+                        c.link = KinoraLink.item(item.id).url
+                        cards.append(c)
+                    }
+                    return cards
+                }
             case .recentlyAdded:
                 if let library {
                     items = try await client.items(library: library, sort: .added, limit: kind.limit).items
@@ -71,7 +107,22 @@ enum Feed {
     static func nextEpisode(of series: Int) async -> FeedEntry {
         await load(key: "series-\(series)") { client in
             guard let next = try await client.item(series).playNext else { return [] }
-            return [await card(next, kind: .continueWatching, client: client)]
+            var c = await card(next, kind: .continueWatching, client: client)
+            // The rest of the season: the large widget lists what comes after, and a season bar.
+            if let season = next.parentId, let eps = try? await client.children(of: season) {
+                let sorted = eps.filter { $0.kind == .episode }.sorted { ($0.episodeNum ?? 0) < ($1.episodeNum ?? 0) }
+                if let i = sorted.firstIndex(where: { $0.id == next.id }) {
+                    c.upcoming = sorted[(i + 1)...].prefix(3).map {
+                        Card.Upcoming(id: $0.id, label: [$0.episodeLabel, $0.title].compactMap { $0 }.joined(separator: " · "),
+                                      link: KinoraLink.play($0.id).url)
+                    }
+                }
+                if let n = next.seasonNum, !sorted.isEmpty {
+                    c.season = Card.SeasonProgress(number: n, watched: sorted.filter { $0.userData?.played == true }.count,
+                                                   total: sorted.count)
+                }
+            }
+            return [c]
         }
     }
 
@@ -91,7 +142,7 @@ enum Feed {
             return FeedEntry(date: .now, state: .signedOut)
         } catch {
             if let cached = cached(key), !cached.isEmpty {
-                return FeedEntry(date: .now, state: .cards(cached), stale: true)
+                return FeedEntry(date: .now, state: .cards(cached), stale: true, updated: savedAt(key))
             }
             return FeedEntry(date: .now, state: .offline)
         }
@@ -118,10 +169,12 @@ enum Feed {
         if data == nil, kind == .continueWatching, episode, let series = item.seriesId {
             data = try? await client.image(series, .backdrop)
         }
+        let progress = kind == .continueWatching ? item.progress : nil
         return Card(id: item.id, title: title, subtitle: subtitle,
-                    progress: kind == .continueWatching ? item.progress : nil,
+                    progress: progress,
                     image: data.flatMap { shrink($0, width: kind.imageWidth) },
-                    link: (kind == .continueWatching ? KinoraLink.play(item.id) : .item(item.id)).url)
+                    link: (kind == .continueWatching ? KinoraLink.play(item.id) : .item(item.id)).url,
+                    remaining: progress == nil ? nil : (item.runtimeSec ?? 0) - (item.userData?.position ?? 0))
     }
 
     /// Widgets have a tight memory budget: keep images just big enough for their spot.
@@ -151,6 +204,27 @@ enum Feed {
     private static func cached(_ key: String) -> [Card]? {
         guard let url = file(key), let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode([Card].self, from: data)
+    }
+
+    private static func savedAt(_ key: String) -> Date? {
+        guard let url = file(key) else { return nil }
+        return (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// What the Control Center button plays: the first title of the last "continue" fetch.
+    static func lastContinueLink() -> URL? {
+        cached(FeedKind.continueWatching.rawValue)?.first { !$0.isSuggestion }?.link
+    }
+
+    /// Drops a title marked watched from every saved list, so the widget changes at once, even offline.
+    static func forget(_ id: Int) {
+        guard let dir = AppGroup.container?.appending(path: "Library/Caches"),
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        for url in files where url.lastPathComponent.hasPrefix("widget-") && url.lastPathComponent != "widget-journal.json" {
+            guard let data = try? Data(contentsOf: url), let cards = try? JSONDecoder().decode([Card].self, from: data),
+                  cards.contains(where: { $0.id == id }) else { continue }
+            try? JSONEncoder().encode(cards.filter { $0.id != id }).write(to: url, options: .atomic)
+        }
     }
 }
 

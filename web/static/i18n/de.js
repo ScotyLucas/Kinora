@@ -1124,6 +1124,17 @@
    "episode": "Folge"
   },
   "app": {
+   "Kezdd el valami újat": "Fang etwas Neues an",
+   "ÚJ · KEZDD EL": "NEU · JETZT STARTEN",
+   "ÚJ": "NEU",
+   "A szerver most nem érhető el. Adatok: {0}": "Der Server ist gerade nicht erreichbar. Stand: {0}",
+   "Ez az évad utolsó része.": "Das ist die letzte Folge der Staffel.",
+   "Kinora – folytatás": "Kinora – weiterschauen",
+   "Ott folytatja a lejátszást, ahol legutóbb abbahagytad.": "Setzt die Wiedergabe dort fort, wo du zuletzt aufgehört hast.",
+   "A hónap kedvencei": "Favoriten des Monats",
+   "annyi, mint a múlt hónapban": "so viel wie im letzten Monat",
+   "{0} több, mint a múlt hónapban": "{0} mehr als im letzten Monat",
+   "{0} kevesebb, mint a múlt hónapban": "{0} weniger als im letzten Monat",
    "Befejezés: {0}": "Endet um {0}",
    "{0}, befejezés: {1}": "{0}, endet um {1}",
    "Vált a hátralévő idő és a befejezés időpontja között.": "Wechselt zwischen Restzeit und Endzeit des Films.",
