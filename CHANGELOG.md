@@ -5,6 +5,19 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.95 – 2026-11-26
+
+- **Új (web, iPhone, iPad):** megújult Napló: nagy fejléc az időszakkal, saját időszakválasztó (telefonon két sorban),
+  nagy számok a változással, az éves cél kiemelt sávban, a kiválasztott hónap filmjei külön panelen, rekordkártyák; az
+  éves összefoglaló és a nézés hozzáadása a fejlécbe került. Telefonon a webes oldal nem lóg ki, a hónapok rövid nevet
+  kapnak. Az iOS-alkalmazás 1.1.95-ös.
+- **Javítva (iPhone, iPad):** németül a kézzel felvett nézés „Sichtung”, nem „Ansicht”.
+- **New (web, iPhone, iPad):** a redesigned Journal: a big header with the period, a period picker of its own (two rows
+  on a phone), big numbers with their change, the yearly goal in a panel of its own, the chosen month's titles in a panel,
+  record cards; the year in review and adding a viewing moved into the header. On a phone the web page no longer runs off
+  the screen and months get short names. The iOS app is 1.1.95.
+- **Fixed (iPhone, iPad):** in German a viewing added by hand is a "Sichtung", not an "Ansicht".
+
 ## 1.1.94 – 2026-11-26
 
 - **Új (web, iPhone, iPad):** bővebb Napló: csillagos értékelés, újranézés jelzése, félbehagyott címek (elrejthetők),

@@ -195,7 +195,7 @@ struct JournalRecords: View {
 
     var body: some View {
         let i = insights
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16, alignment: .topLeading), count: sizeClass == .regular ? 4 : 2), alignment: .leading, spacing: 20) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .topLeading), count: sizeClass == .regular ? 4 : 2), alignment: .leading, spacing: 10) {
             record(L("Leghosszabb sorozat"), L("{0} nap", i.longestStreak),
                    i.longestStreak > 1 ? "\(Self.day(i.streakStart)) – \(Self.day(i.streakEnd))" : Self.day(i.streakEnd))
             if let d = i.biggestDay { record(L("Legtöbb egy nap"), L("{0} nézés", d.count), Self.day(d.date)) }
@@ -210,9 +210,14 @@ struct JournalRecords: View {
     private func record(_ label: String, _ value: String, _ sub: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(Theme.muted)
-            Text(value).font(Theme.display(30)).foregroundStyle(Theme.plasterBright).lineLimit(1).minimumScaleFactor(0.6)
+            Text(value).font(Theme.display(36)).foregroundStyle(Theme.plasterBright).lineLimit(1).minimumScaleFactor(0.5)
             Text(sub).font(.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
         }
+        // a card per record, all of a row's cards as tall as the tallest
+        .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
+        .padding(14)
+        .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.rule, lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
 }
@@ -396,8 +401,10 @@ struct JournalChallenges: View {
             HStack {
                 Text(L("Kihívások")).font(Theme.display(26)).foregroundStyle(Theme.plasterBright).accessibilityAddTraits(.isHeader)
                 Spacer()
-                if canEdit { Button { adding = true } label: { Label(L("Új kihívás"), systemImage: "plus") }.font(.subheadline) }
+                if canEdit { Button { adding = true } label: { Label(L("Új kihívás"), systemImage: "plus") }.font(.subheadline).tint(Theme.amber) }
             }
+            .padding(.bottom, 8)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
             if challenges.isEmpty {
                 Text(L("A kihívás egy kipipálható lista: egy rendező vagy színész minden filmje, egy filmsorozat összes része.")).foregroundStyle(Theme.muted)
             }
@@ -729,6 +736,9 @@ struct JournalAbandoned: View {
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 Text(L("Félbehagyva")).font(Theme.display(26)).foregroundStyle(Theme.plasterBright).accessibilityAddTraits(.isHeader)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 8)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
                 Text(L("Elkezdted, a játékidő ötöde előtt abbahagytad, és két hete nem nyúltál hozzá.")).font(.subheadline).foregroundStyle(Theme.muted)
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {

@@ -21,6 +21,7 @@ struct JournalSheet: View {
 struct JournalView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.metrics) private var metrics
+    @Environment(\.horizontalSizeClass) private var sizeClass
     var open: (Item) -> Void
 
     @State private var period: JournalPeriod = .month
@@ -60,10 +61,7 @@ struct JournalView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                Picker(L("Időszak"), selection: $period) {
-                    ForEach(JournalPeriod.allCases) { Text(Self.periodName($0)).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                header
 
                 if let s = summary {
                     if s.isEmpty {
@@ -71,7 +69,6 @@ struct JournalView: View {
                                                description: Text(L("Amit végignézel (vagy megnézettnek jelölsz), itt jelenik meg.")))
                         goals(films: 0)
                     } else {
-                        headline(s)
                         stats(s)
                         goals(films: s.films)
                         timeline(s)
@@ -93,13 +90,10 @@ struct JournalView: View {
         }
         .kinoraScreen()
         .navigationTitle(L("Napló"))
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if canEditJournal {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { addingViewing = true } label: { Label(L("Nézés hozzáadása"), systemImage: "plus") }
-                }
-            }
+            // the page draws its own big title; the bar keeps the name for the back button and VoiceOver
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1).accessibilityHidden(true) }
             if let s = summary, !s.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     if let card {
@@ -219,32 +213,38 @@ struct JournalView: View {
     /// The server refuses profile changes from a kids profile and on a device locked to one profile.
     private var canEditGoal: Bool { model.me?.profile != nil && model.me?.profile?.isKids != true && model.me?.profileLocked != true }
 
+    /// The yearly film goal as a lit panel: the count against the goal, how the year is going, and the bar with today's mark.
     @ViewBuilder private func goal(films: Int) -> some View {
         let g = goalValue
         if g > 0 {
             let pace = JournalGoal.pace(films: films, goal: g)
-            VStack(alignment: .leading, spacing: 8) {
+            let ahead = films >= g || pace.ahead >= 0
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(L("Éves cél")).font(.headline).foregroundStyle(Theme.plasterBright)
-                    Text(films >= g ? L("teljesítve!") : pace.ahead >= 0 ? L("{0} filmmel a terv előtt", pace.ahead) : L("{0} filmmel a terv mögött", -pace.ahead))
-                        .font(.subheadline).foregroundStyle(films >= g || pace.ahead >= 0 ? Theme.amber : Theme.muted)
+                    Text(L("Éves cél")).font(Theme.display(26, weight: .bold)).foregroundStyle(Theme.plasterBright).accessibilityAddTraits(.isHeader)
                     Spacer()
-                    if canEditGoal { Button(L("Módosítás")) { goalText = String(g); goalEditing = true }.font(.subheadline) }
+                    if canEditGoal { Button(L("Módosítás")) { goalText = String(g); goalEditing = true }.font(.subheadline).tint(Theme.amber) }
                 }
+                Text(L("{0} / {1} film", films, g)).font(Theme.display(40)).foregroundStyle(Theme.plasterBright).lineLimit(1).minimumScaleFactor(0.6)
+                Text(films >= g ? L("teljesítve!") : pace.ahead >= 0 ? L("{0} filmmel a terv előtt", pace.ahead) : L("{0} filmmel a terv mögött", -pace.ahead))
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(ahead ? Theme.ok : Theme.muted)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Theme.panel)
+                        Capsule().fill(Theme.black)
                         Capsule().fill(Theme.amber).frame(width: geo.size.width * min(1, CGFloat(films) / CGFloat(g)))
-                        Rectangle().fill(Theme.plaster).frame(width: 2, height: 18)
+                        Rectangle().fill(Theme.plasterBright).frame(width: 2, height: 20)
                             .offset(x: geo.size.width * min(1, CGFloat(pace.due) / CGFloat(g)) - 1)
                     }
                 }
-                .frame(height: 10)
+                .frame(height: 12)
+                .padding(.vertical, 4)
                 .accessibilityElement()
                 .accessibilityLabel(L("Éves cél"))
                 .accessibilityValue(L("{0} / {1} film", films, g))
-                Text(L("{0} / {1} film", films, g)).font(.footnote).foregroundStyle(Theme.muted)
             }
+            .padding(18)
+            .background(Theme.lacquer, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.rule, lineWidth: 1))
         }
     }
 
@@ -307,43 +307,112 @@ struct JournalView: View {
 
     // MARK: - sections
 
-    /// The sentence a monthly or yearly recap opens with.
-    private func headline(_ s: JournalSummary) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(Self.periodLead(period)).font(.footnote.weight(.semibold)).textCase(.uppercase).foregroundStyle(Theme.muted)
-            (Text(L("{0} filmet", s.films)).foregroundStyle(Theme.amber) + Text(" " + L("és {0} epizódot láttál.", s.episodes)))
-                .font(Theme.display(34))
-                .foregroundStyle(Theme.plasterBright)
-                .fixedSize(horizontal: false, vertical: true)
-            if let g = s.genres.first {
-                Text(L("Leginkább {0}.", g.name.lowercased()))
-                    .foregroundStyle(Theme.plaster)
+    /// The page's own title: the period, the name, a line on what it is, the period picker and the page's actions.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Self.periodLead(period)).font(.footnote.weight(.semibold)).tracking(1.6).textCase(.uppercase).foregroundStyle(Theme.amber)
+                Text(L("Napló")).font(Theme.display(sizeClass == .regular ? 88 : 64)).foregroundStyle(Theme.plasterBright)
+                    .lineLimit(1).minimumScaleFactor(0.6).accessibilityAddTraits(.isHeader)
+                Text(L("Mit, mikor és mennyit néztél ezen a profilon.")).foregroundStyle(Theme.plaster).fixedSize(horizontal: false, vertical: true)
             }
-            if period == .year || period == .lastYear {
-                Button { recapVisible = true } label: {
-                    Label(L("Éves összefoglaló"), systemImage: "play.fill").font(.headline)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.amber)
-                .foregroundStyle(Theme.amberInk)
-                .padding(.top, 8)
-            }
+            periodPicker
+            actions
         }
     }
 
-    private func stats(_ s: JournalSummary) -> some View {
-        let p = previous
-        return VStack(alignment: .leading, spacing: 8) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12, alignment: .topLeading)], spacing: 12) {
-                stat(L("Filmek"), s.films.formatted(), nil, delta: p.map { s.films - $0.films })
-                stat(L("Epizódok"), s.episodes.formatted(), s.shows > 0 ? L("{0} sorozatból", s.shows) : nil, delta: p.map { s.episodes - $0.episodes })
-                stat(L("Nézési idő"), s.seconds < 3600 ? L("{0} perc", s.seconds / 60) : L("{0} óra", Int((Double(s.seconds) / 3600).rounded())),
-                     s.seconds >= 86400 ? L("≈ {0} teljes nap", (Double(s.seconds) / 86400).formatted(.number.precision(.fractionLength(1)))) : nil,
-                     delta: p.map { Int((Double(s.seconds - $0.seconds) / 3600).rounded()) }, unit: { L("{0} óra", $0) })
-                if let g = s.genres.first, let share = s.topGenreShare {
-                    stat(L("Kedvenc műfaj"), g.name, L("a nézéseid {0}%-a", share))
+    /// Four periods side by side, or two by two where the names do not fit in one row (German on a phone).
+    private var periodPicker: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 1) { ForEach(JournalPeriod.allCases) { periodCell($0) } }
+            Grid(horizontalSpacing: 1, verticalSpacing: 1) {
+                GridRow { periodCell(.month); periodCell(.year) }
+                GridRow { periodCell(.lastYear); periodCell(.all) }
+            }
+        }
+        .background(Theme.rule)
+        .clipShape(RoundedRectangle(cornerRadius: 2))
+        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Theme.rule, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L("Időszak"))
+    }
+
+    private func periodCell(_ p: JournalPeriod) -> some View {
+        let on = p == period
+        return Button { period = p } label: {
+            Text(Self.periodName(p))
+                .font(.subheadline.weight(on ? .semibold : .regular))
+                .foregroundStyle(on ? Theme.amber : Theme.plaster)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(on ? Theme.raised : Theme.black)
+                .overlay(alignment: .bottom) { if on { Rectangle().fill(Theme.amber).frame(height: 2) } }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    /// The year as a story (this year and last) and a viewing seen somewhere else.
+    @ViewBuilder private var actions: some View {
+        let recap = (period == .year || period == .lastYear) && summary.map { !$0.isEmpty } == true
+        if recap || canEditJournal {
+            let recapButton = Button { recapVisible = true } label: {
+                Label(L("Éves összefoglaló"), systemImage: "play.fill").frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .buttonStyle(.bordered).tint(Theme.plasterBright)
+            let addButton = Button { addingViewing = true } label: {
+                Label(L("Nézés hozzáadása"), systemImage: "plus").frame(maxWidth: .infinity, minHeight: 30)
+            }
+            .buttonStyle(.borderedProminent).tint(Theme.amber).foregroundStyle(Theme.amberInk)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    if recap { recapButton.fixedSize() }
+                    if canEditJournal { addButton.fixedSize() }
+                }
+                VStack(spacing: 10) {
+                    if recap { recapButton }
+                    if canEditJournal { addButton }
                 }
             }
+            .font(.subheadline.weight(.semibold))
+            .controlSize(.large)
+        }
+    }
+
+    private struct StatCell {
+        var label: String, value: String, sub: String?, delta: Int?
+        var unit: (Int) -> String = { $0.formatted() }
+    }
+
+    /// The period in four big numbers: two by two on a phone, in one row on an iPad, the favourite genre in amber.
+    private func stats(_ s: JournalSummary) -> some View {
+        let p = previous
+        var cells = [
+            StatCell(label: L("Filmek"), value: s.films.formatted(), sub: nil, delta: p.map { s.films - $0.films }),
+            StatCell(label: L("Epizódok"), value: s.episodes.formatted(), sub: s.shows > 0 ? L("{0} sorozatból", s.shows) : nil,
+                     delta: p.map { s.episodes - $0.episodes }),
+            StatCell(label: L("Nézési idő"), value: s.seconds < 3600 ? L("{0} perc", s.seconds / 60) : L("{0} óra", Int((Double(s.seconds) / 3600).rounded())),
+                     sub: s.seconds >= 86400 ? L("≈ {0} teljes nap", (Double(s.seconds) / 86400).formatted(.number.precision(.fractionLength(1)))) : nil,
+                     delta: p.map { Int((Double(s.seconds - $0.seconds) / 3600).rounded()) }, unit: { L("{0} óra", $0) }),
+        ]
+        let genre = s.genres.first.flatMap { g in s.topGenreShare.map { StatCell(label: L("Kedvenc műfaj"), value: g.name, sub: L("a nézéseid {0}%-a", $0), delta: nil) } }
+        if let genre { cells.append(genre) }
+        let cols = sizeClass == .regular ? 4 : 2
+        let rows = stride(from: 0, to: cells.count, by: cols).map { Array(cells[$0..<min($0 + cols, cells.count)]) }
+        return VStack(alignment: .leading, spacing: 8) {
+            Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { r, row in
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { c, cell in
+                            stat(cell, leading: c > 0, accent: genre != nil && r * cols + c == cells.count - 1)
+                        }
+                    }
+                }
+            }
+            .overlay(alignment: .top) { Rectangle().fill(Theme.muted.opacity(0.45)).frame(height: 1) }
             if p != nil {
                 Text(period == .month ? L("A nyilak a múlt hónap ugyanennyi napjához mérnek.")
                      : period == .year ? L("A nyilak a tavalyi év ugyanezen pontjához mérnek.") : L("A nyilak az azt megelőző évhez mérnek."))
@@ -352,21 +421,30 @@ struct JournalView: View {
         }
     }
 
-    private func stat(_ label: String, _ value: String, _ sub: String?, delta: Int? = nil,
-                      unit: (Int) -> String = { $0.formatted() }) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(Theme.muted)
-            Text(value).font(Theme.display(32)).foregroundStyle(Theme.plasterBright).lineLimit(1).minimumScaleFactor(0.5)
-            if let d = delta {
-                Text((d > 0 ? "▲ +" : d < 0 ? "▼ −" : "±") + unit(abs(d)))
+    private func stat(_ c: StatCell, leading: Bool, accent: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(c.label).font(.caption.weight(.semibold)).tracking(1.2).textCase(.uppercase).foregroundStyle(Theme.muted).lineLimit(1)
+            let value = Text(c.value).font(Theme.display(sizeClass == .regular ? 64 : 52))
+                .foregroundStyle(accent ? Theme.amber : Theme.plasterBright).lineLimit(1)
+            let delta = c.delta.map { d in
+                Text((d > 0 ? "▲ +" : d < 0 ? "▼ −" : "±") + c.unit(abs(d)))
                     .font(.footnote.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(d > 0 ? Theme.amber : Theme.muted)
+                    .foregroundStyle(d > 0 ? Theme.ok : Theme.muted)
+                    .lineLimit(1)
             }
-            if let sub { Text(sub).font(.footnote).foregroundStyle(Theme.muted) }
+            // the change sits next to the number while both fit ("76 Stunden" in German does not), else under it
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) { value.fixedSize(); delta?.fixedSize() }
+                VStack(alignment: .leading, spacing: 2) { value.minimumScaleFactor(0.4); delta?.minimumScaleFactor(0.8) }
+            }
+            if let sub = c.sub { Text(sub).font(.footnote).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 12)
-        .overlay(alignment: .top) { Rectangle().fill(Theme.rule).frame(height: 1) }
+        .padding(.vertical, 16)
+        .padding(.leading, leading ? 16 : 0)
+        .padding(.trailing, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .leading) { if leading { Rectangle().fill(Theme.rule).frame(width: 1) } }
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
         .accessibilityElement(children: .combine)
     }
 
@@ -401,17 +479,27 @@ struct JournalView: View {
             }
             .defaultScrollAnchor(.trailing)
             if let bucket {
-                Text("\(longLabel(bucket, s.unit)) · \(L("{0} nézés", bucket.events.count))")
-                    .font(.headline).foregroundStyle(Theme.plasterBright)
-                if bucket.events.isEmpty {
-                    Text(L("Ekkor nem néztél semmit.")).foregroundStyle(Theme.muted)
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(Array(bucket.events.reversed().enumerated()), id: \.offset) { _, e in poster(e) }
+                // the chosen bar's titles, in a lit panel under the bars
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(longLabel(bucket, s.unit)).font(Theme.display(26, weight: .bold)).foregroundStyle(Theme.plasterBright)
+                        Spacer()
+                        Text(L("{0} nézés", bucket.events.count)).font(.footnote).foregroundStyle(Theme.muted)
+                    }
+                    .accessibilityElement(children: .combine)
+                    if bucket.events.isEmpty {
+                        Text(L("Ekkor nem néztél semmit.")).foregroundStyle(Theme.muted)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(alignment: .top, spacing: 14) {
+                                ForEach(Array(bucket.events.reversed().enumerated()), id: \.offset) { _, e in poster(e) }
+                            }
                         }
                     }
                 }
+                .padding(16)
+                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.rule, lineWidth: 1))
             }
         }
     }
@@ -534,6 +622,9 @@ struct JournalView: View {
 
     private func sectionTitle(_ t: String) -> some View {
         Text(t).font(Theme.display(metrics.sectionTitle)).foregroundStyle(Theme.plasterBright).accessibilityAddTraits(.isHeader)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 8)
+            .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
     }
 
     // MARK: - helpers

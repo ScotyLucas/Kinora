@@ -13,6 +13,8 @@ enum Theme {
     static let amber = Color(hex: 0xF0B44C)
     static let amberInk = Color(hex: 0x2B1C00)
     static let danger = Color(hex: 0xE8705F)
+    /// Going the right way: a goal ahead of plan, a number up on the period before.
+    static let ok = Color(hex: 0x8FC27A)
 
     /// Condensed display face standing in for Big Shoulders Display.
     static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {

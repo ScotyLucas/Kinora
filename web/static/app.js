@@ -1866,8 +1866,13 @@ async function viewJournal(q) {
   const pick = h('nav.chips.j-period', { 'aria-label': T.jPeriod }, Object.keys(periods).map(k =>
     h('a.chip' + (k === per ? '.on' : ''), { href: '#/journal?p=' + k, 'aria-current': k === per ? 'page' : null }, T.jPeriods[k])));
   const canEdit = jCanEdit();
-  main.append(h('div.page-head', null, h('div', null, h('h1', null, T.journal), h('span.muted', null, T.jLede)),
-    h('div.j-head-actions', null, pick, canEdit && h('button.btn.small', { type: 'button', onclick: () => jAddViewing() }, '＋ ' + T.jAdd))));
+  // the kicker names the stretch the page shows: the month, the year, or every year
+  const kick = per === 'month' ? now.toLocaleDateString(T.locale, { year: 'numeric', month: 'long' })
+    : per === 'year' ? String(Y) : per === 'last' ? String(Y - 1) : T.jPeriods.all;
+  const headActs = h('div.j-head-btns', null, canEdit && h('button.btn.primary', { type: 'button', onclick: () => jAddViewing() }, icon('plus'), T.jAdd));
+  main.append(h('div.page-head.j-head', null,
+    h('div.j-title', null, h('p.j-kick', null, kick), h('h1', null, T.journal), h('p.j-lede', null, T.jLede)),
+    h('div.j-head-actions', null, pick, headActs)));
   // the same stretch of the period before (month and year so far, last year against the one before it)
   const prevFrom = { month: new Date(Y, M - 1, 1), year: new Date(Y - 1, 0, 1), last: new Date(Y - 2, 0, 1) }[per];
   const prevTo = prevFrom && (per === 'last' ? new Date(Y - 1, 0, 1) : new Date(Math.min(prevFrom.getTime() + (now - from), from.getTime())));
@@ -1878,11 +1883,10 @@ async function viewJournal(q) {
   let evs = r.events;
   if (unit === 'year' && evs.length) evs = evs.filter(e => e.at > 0);
   // what does not depend on the period's viewings: challenges and the titles left early
-  const extras = () => [jChallenges(challenges || [], canEdit), jAbandoned(abandoned || [])];
+  const extras = () => [jChallenges(challenges || [], canEdit)];
   if (!evs.length) {
     main.append(emptyNote(T.jEmpty, T.jEmptyHint, h('a.btn', { href: '#/home' }, T.home)));
-    if (per === 'year' || per === 'month') main.append(jGoals(goals || [], [], per, canEdit));
-    main.append(...extras());
+    main.append(h('div.j-pair', null, (per === 'year' || per === 'month') && jGoals(goals || [], [], per, canEdit, headActs), ...extras()));
     return;
   }
   // rewatches: the how-manieth viewing of a film within the period
@@ -1905,7 +1909,7 @@ async function viewJournal(q) {
   const prevSecs = pe ? pe.reduce((a, e) => a + (e.runtime_sec || 0), 0) : 0;
   // under an hour of difference shows in minutes, so a small change does not read as "±0 hours"
   const timeDelta = d => Math.abs(d) < 3600 ? Math.round(d / 60) * 60 : Math.round(d / 3600) * 3600;
-  const stat = (label, value, sub, d) => h('div.j-stat', null, h('dt', null, label), h('dd', null, h('b', null, value), d, sub && h('span.muted.small', null, sub)));
+  const stat = (label, value, sub, d) => h('div.j-stat', null, h('dt', null, label), h('dd', null, h('span.j-val', null, h('b', null, value), d), sub && h('span.muted.small', null, sub)));
   main.append(h('dl.j-stats', null,
     stat(T.jFilms, num(films.length), '', delta(films.length - (pe || []).filter(e => e.kind === 'movie').length)),
     stat(T.jEpisodes, num(eps.length), shows ? T.jShows(shows) : '', delta(eps.length - (pe || []).filter(e => e.kind === 'episode').length)),
@@ -1914,8 +1918,8 @@ async function viewJournal(q) {
   if (pe) main.append(h('p.muted.small.j-vs', null, T.jVs[per]));
   else if (prevFrom && prev === null) main.append(h('p.muted.small.j-vs', null, T.jVsFail));
   if (per === 'year') main.append(goalBlock(films.length));
-  if (per === 'year' || per === 'month') main.append(jGoals(goals || [], evs, per, canEdit));
-  if (per === 'year' || per === 'last') main.append(h('p.j-recap-open', null, h('button.btn.primary', { onclick: () => openRecap() }, '▶ ' + T.jRecap)));
+  // the year as a story sits with the page's own actions
+  if (per === 'year' || per === 'last') headActs.prepend(h('button.btn', { type: 'button', onclick: () => openRecap() }, icon('play'), T.jRecap));
 
   // timeline: one bar per day, month or year; a click lists that bucket's titles
   const d0 = from.getTime() ? from : new Date(new Date(evs[0].at * 1000).getFullYear(), 0, 1);
@@ -1923,7 +1927,13 @@ async function viewJournal(q) {
   const keys = unit === 'day' ? [...Array(new Date(Y, M + 1, 0).getDate())].map((_, i) => i + 1)
     : unit === 'month' ? [...Array(12).keys()]
     : [...Array(Y - d0.getFullYear() + 1)].map((_, i) => d0.getFullYear() + i);
-  const label = k => unit === 'month' ? new Date(2000, k, 1).toLocaleDateString(T.locale, { month: 'short' }) : String(k);
+  // on a phone twelve months share one row: three letters each ("márc." and "szept." would run together)
+  const narrow = matchMedia('(max-width: 520px)').matches;
+  const label = k => {
+    if (unit !== 'month') return String(k);
+    const s = new Date(2000, k, 1).toLocaleDateString(T.locale, { month: 'short' });
+    return narrow ? s.replace(/\.$/, '').slice(0, 3) : s;
+  };
   const longLabel = k => unit === 'day' ? new Date(Y, M, k).toLocaleDateString(T.locale, { month: 'long', day: 'numeric' })
     : unit === 'month' ? new Date(d0.getFullYear(), k, 1).toLocaleDateString(T.locale, { year: 'numeric', month: 'long' }) : String(k);
   const buckets = new Map(keys.map(k => [k, []]));
@@ -1933,7 +1943,7 @@ async function viewJournal(q) {
   // ?b= picks the bucket to open with (the home page's monthly recap opens its month)
   const asked = q.get('b') != null && buckets.has(+q.get('b')) ? +q.get('b') : null;
   let sel = asked ?? [...buckets].reverse().find(([, b]) => b.length)[0];
-  const bars = h('div.j-bars', { style: { gridTemplateColumns: `repeat(${keys.length}, minmax(${unit === 'day' ? 22 : 32}px, 1fr))` } });
+  const bars = h('div.j-bars', { style: { gridTemplateColumns: `repeat(${keys.length}, minmax(${unit === 'day' ? 22 : 24}px, 1fr))` } });
   const showBucket = k => {
     sel = k;
     for (const b of bars.children) b.setAttribute('aria-pressed', String(b._k === k));
@@ -1968,7 +1978,7 @@ async function viewJournal(q) {
     bars.append(b);
   }
   const track = h('div.scroll-x', null, bars);
-  main.append(h('section.j-sec', { 'aria-labelledby': 'j-tl' }, h('h2', { id: 'j-tl' }, T.jTimeline), track, detail));
+  main.append(h('section.j-sec.j-big', { 'aria-labelledby': 'j-tl' }, h('h2', { id: 'j-tl' }, T.jTimeline), h('div.j-tl', null, track, detail)));
   showBucket(sel);
   // on a narrow screen the bars scroll sideways: start with the chosen one in view, not with the first day
   requestAnimationFrame(() => {
@@ -1988,17 +1998,14 @@ async function viewJournal(q) {
   const late = hours.slice(0, 5).reduce((a, n) => a + n, 0);
   const dayName = i => new Date(2024, 0, 1 + i).toLocaleDateString(T.locale, { weekday: 'short' }); // 2024-01-01 was a Monday
   const busiest = days.indexOf(Math.max(...days));
-  main.append(h('div.j-grid', null,
-    genres.length > 0 && h('section.j-sec', null, h('h2', null, T.genres), barList(genres.slice(0, 6))),
-    decades.length > 0 && h('section.j-sec', null, h('h2', null, T.jDecades), barList(decades.slice(0, 6))),
-    h('section.j-sec', null, h('h2', null, T.jWhen),
+  const whenBox = h('div.j-when-l', null,
       h('ul.j-week', null, days.map((n, i) => h('li', { 'aria-label': new Date(2024, 0, 1 + i).toLocaleDateString(T.locale, { weekday: 'long' }) + ': ' + T.jViewings(n) },
         h('i', { 'aria-hidden': 'true', style: { opacity: n ? 0.25 + 0.75 * n / dMax : 0.08 } }),
         h('b', { 'aria-hidden': 'true' }, num(n)), h('span', { 'aria-hidden': 'true' }, dayName(i))))),
       h('ul.j-facts', null,
         h('li', null, T.jPeak(peak, (peak + 1) % 24)),
         h('li', null, T.jBusiest(new Date(2024, 0, 1 + busiest).toLocaleDateString(T.locale, { weekday: 'long' }))),
-        late > 0 && h('li', null, T.jLate(late))))));
+        late > 0 && h('li', null, T.jLate(late))));
 
   // who and where: directors (a series' creators), cast and countries, from TMDB; a series counts once a day
   const directors = count(genreBase, e => e.directors || []);
@@ -2009,10 +2016,14 @@ async function viewJournal(q) {
   const rewatched = count(films, filmKey).filter(([, n]) => n > 1).map(([k, n]) => [films.find(e => filmKey(e) === k).title, n]);
   const rated = films.filter(e => e.rating > 0);
   const avg = rated.length ? rated.reduce((a, e) => a + e.rating, 0) / rated.length : 0;
-  if (directors.length || cast.length || countries.length || rewatched.length || rated.length) main.append(h('div.j-grid', null,
+  // one grid for every breakdown, so short lists sit side by side instead of leaving holes
+  const breakdowns = h('div.j-grid', null,
+    genres.length > 0 && h('section.j-sec', null, h('h2', null, T.genres), barList(genres.slice(0, 6))),
+    decades.length > 0 && h('section.j-sec', null, h('h2', null, T.jDecades), barList(decades.slice(0, 6))),
     directors.length > 0 && h('section.j-sec', null, h('h2', null, T.jDirectors), barList(directors.slice(0, 6))),
     cast.length > 0 && h('section.j-sec', null, h('h2', null, T.jCast), barList(cast.slice(0, 6))),
     countries.length > 0 && h('section.j-sec', null, h('h2', null, T.jCountries), barList(countries.slice(0, 6).map(([c, n]) => [country(c), n]))),
+    (rewatched.length > 0 || rated.length > 0) && h('div.j-stack', null,
     rewatched.length > 0 && h('section.j-sec', null, h('h2', null, T.jRewatched), barList(rewatched.slice(0, 6))),
     rated.length > 0 && h('section.j-sec', null, h('h2', null, T.jRated),
       h('p', null, h('b.j-avg', null, '★ ' + num(avg, 1)), ' ', h('span.muted', null, T.jRatedOf(rated.length, films.length))),
@@ -2023,17 +2034,20 @@ async function viewJournal(q) {
   const grid = [...Array(7)].map(() => Array(24).fill(0));
   for (const e of evs) { const d = new Date(e.at * 1000); grid[(d.getDay() + 6) % 7][d.getHours()]++; }
   const gMax = Math.max(1, ...grid.flat());
-  main.append(h('section.j-sec', { 'aria-labelledby': 'j-hm' }, h('h2', { id: 'j-hm' }, T.jHeatmap),
-    h('div.scroll-x', null, h('table.j-heat', null,
+  main.append(breakdowns, h('section.j-sec.j-big.j-when', { 'aria-labelledby': 'j-hm' }, h('h2', { id: 'j-hm' }, T.jWhen),
+    whenBox,
+    h('div.scroll-x.j-when-r', { 'aria-label': T.jHeatmap }, h('table.j-heat', null,
       h('thead', null, h('tr', null, h('th'), [...Array(24).keys()].map(hr => h('th', { scope: 'col' }, hr % 3 ? '' : String(hr))))),
       h('tbody', null, grid.map((row, d) => h('tr', null, h('th', { scope: 'row' }, dayName(d)),
         row.map((n, hr) => h('td', { title: `${dayName(d)} ${hr}:00 · ${T.jViewings(n)}`, 'aria-label': `${dayName(d)} ${hr}:00: ${T.jViewings(n)}` },
-          h('i', { style: { opacity: n ? 0.2 + 0.8 * n / gMax : 0 } }))))))))));
+          h('i', { style: { opacity: n ? 0.2 + 0.8 * n / gMax : 0 } }))))))),
+      h('p.j-heat-key', { 'aria-hidden': 'true' }, h('span', null, '0'), [0.2, 0.5, 0.75, 1].map(o => h('i', { style: { opacity: o } })), h('span', null, num(gMax))))));
 
   // records: the longest run of days, the biggest day and week, binge weekends
   main.append(jRecords(evs));
 
-  main.append(...extras());
+  main.append(h('div.j-pair', null, (per === 'year' || per === 'month') && jGoals(goals || [], evs, per, canEdit, headActs), ...extras()));
+  main.append(jAbandoned(abandoned || []));
 
   // the year as a story: one big statement per page; click (or →, ←) to step, Esc to leave
   function openRecap() {
@@ -2193,8 +2207,9 @@ function jAddViewing() {
 }
 
 // more goals: films, hours, episodes or films of a genre, by month or year, with the pace they need
-function jGoals(goals, evs, per, canEdit) {
-  const box = h('section.j-sec.j-goals', { 'aria-label': T.jGoals });
+function jGoals(goals, evs, per, canEdit, headActs) {
+  const box = h('section.j-sec.j-big', { 'aria-labelledby': 'j-gl' });
+  const list = h('div.j-goals');
   const now = new Date();
   const span = p => p === 'month' ? [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 1)]
     : [new Date(now.getFullYear(), 0, 1), new Date(now.getFullYear() + 1, 0, 1)];
@@ -2219,9 +2234,12 @@ function jGoals(goals, evs, per, canEdit) {
         h('i', { style: { width: Math.min(100, v / g.target * 100) + '%' } }), h('u', { style: { left: Math.min(100, due / g.target * 100) + '%' } })),
       h('p.small', null, `${num(v)} / ${num(g.target)} ${g.metric === 'hours' ? T.jUnitHours : g.metric === 'episodes' ? T.jUnitEps : T.jUnitFilms}`));
   });
-  const add = canEdit && h('button.btn.ghost.small', { type: 'button', onclick: () => jGoalForm(evs) }, '＋ ' + T.jGoalAdd);
+  const add = canEdit && h('button.btn.small', { type: 'button', onclick: () => jGoalForm(evs) }, icon('plus'), T.jGoalAdd);
   if (!rows.length && !add) return h('span');
-  box.append(...rows, add);
+  // with no goal yet the lone button would take a whole section: it joins the page's own actions
+  if (!rows.length && headActs) { add.classList.remove('small'); headActs.append(add); return h('span'); }
+  list.append(...rows);
+  box.append(h('div.j-sec-head', null, h('h2', { id: 'j-gl' }, T.jGoals), add), list);
   return box;
 }
 
@@ -2284,7 +2302,7 @@ function jRecords(evs) {
   const fmt = d => d.toLocaleDateString(T.locale, { year: 'numeric', month: 'short', day: 'numeric' });
   const stat = (label, value, sub) => h('div.j-stat', null, h('dt', null, label), h('dd', null, h('b', null, value), sub && h('span.muted.small', null, sub)));
   const startOf = bestEnd && new Date(bestEnd.getFullYear(), bestEnd.getMonth(), bestEnd.getDate() - best + 1);
-  return h('section.j-sec', { 'aria-labelledby': 'j-rec' }, h('h2', { id: 'j-rec' }, T.jRecords), h('dl.j-stats', null,
+  return h('section.j-sec.j-big', { 'aria-labelledby': 'j-rec' }, h('h2', { id: 'j-rec' }, T.jRecords), h('dl.j-stats.j-rec', null,
     stat(T.jStreak, T.jDaysN(best), best > 1 ? `${fmt(startOf)} – ${fmt(bestEnd)}` : fmt(bestEnd)),
     top && stat(T.jBigDay, T.jViewings(top.n), fmt(top.d)),
     wn > 0 && stat(T.jBigWeek, T.jViewings(wn), T.jWeekOf(fmt(new Date(wk)))),
@@ -2293,8 +2311,8 @@ function jRecords(evs) {
 
 // challenges: lists of titles to tick off, built from a director, an actor, a film series or by hand
 function jChallenges(list, canEdit) {
-  const box = h('section.j-sec', { 'aria-labelledby': 'j-ch' }, h('div.j-sec-head', null, h('h2', { id: 'j-ch' }, T.jChallenges),
-    canEdit && h('button.btn.ghost.small', { type: 'button', onclick: () => jChallengeForm() }, '＋ ' + T.jChNew)));
+  const box = h('section.j-sec.j-big', { 'aria-labelledby': 'j-ch' }, h('div.j-sec-head', null, h('h2', { id: 'j-ch' }, T.jChallenges),
+    canEdit && h('button.btn.small', { type: 'button', onclick: () => jChallengeForm() }, icon('plus'), T.jChNew)));
   if (!list.length) { box.append(h('p.muted', null, T.jChEmpty)); return canEdit ? box : h('span'); }
   for (const c of list) {
     const pct = c.total ? Math.round(c.done / c.total * 100) : 0;
@@ -2384,7 +2402,7 @@ function jChallengeAddTitles(c) {
 // started and left before a fifth of the runtime, untouched for two weeks
 function jAbandoned(items) {
   if (!items.length) return h('span');
-  return h('section.j-sec', { 'aria-labelledby': 'j-ab' }, h('h2', { id: 'j-ab' }, T.jAbandoned), h('p.muted.small', null, T.jAbandonedHint),
+  return h('section.j-sec', { 'aria-labelledby': 'j-ab' }, h('div.j-sec-head.j-ab-head', null, h('h2', { id: 'j-ab' }, T.jAbandoned), h('p.muted.small', null, T.jAbandonedHint)),
     h('div.j-posters', null, items.map(it => {
       const wrap = h('div.j-ab', null, card(it, 'poster'), h('button.btn.ghost.small', { type: 'button', onclick: async () => {
         try { await api('POST', `/api/journal/abandoned/${it.id}/hide`); wrap.remove(); } catch { /* shown */ }
@@ -2413,7 +2431,7 @@ function goalBlock(films) {
   const p = state.me.profile, goal = p?.journal_goal || 0;
   if (!goal) return h('span'); // a new one is set from the goals' own "New goal" button
   const canEdit = p && !p.is_kids && !state.me.profile_locked;
-  const box = h('section.j-goal', { 'aria-label': T.jGoal });
+  const box = h('section.j-goal.j-band', { 'aria-labelledby': 'j-yg' });
   const edit = () => {
     const input = h('input', { type: 'number', min: 1, max: 1000, step: 1, value: goal || 52, 'aria-label': T.jGoalFilms, style: { width: '7em' } });
     const save = async v => {
@@ -2431,11 +2449,13 @@ function goalBlock(films) {
     const now = new Date(), y0 = new Date(now.getFullYear(), 0, 1), y1 = new Date(now.getFullYear() + 1, 0, 1);
     const due = Math.floor(goal * (now - y0) / (y1 - y0)), ahead = films - due;
     const pace = films >= goal ? T.jGoalDone : ahead >= 0 ? T.jGoalAhead(ahead) : T.jGoalBehind(-ahead);
-    return [h('div.j-goal-head', null, h('span', null, h('b', null, T.jGoal), ' · ', h('span.muted', null, pace)),
-        canEdit && h('button.btn.ghost.small', { type: 'button', onclick: edit }, T.edit)),
-      h('div.j-goal-bar', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': goal, 'aria-valuenow': Math.min(films, goal), 'aria-label': T.jGoal },
-        h('i', { style: { width: Math.min(100, films / goal * 100) + '%' } }), h('u', { style: { left: Math.min(100, due / goal * 100) + '%' }, title: T.jGoalDue(due) })),
-      h('p.small', null, T.jGoalOf(num(films), num(goal)))];
+    return [h('div.j-band-txt', null,
+        h('div.j-goal-head', null, h('h2', { id: 'j-yg' }, T.jGoal), canEdit && h('button.btn.ghost.small', { type: 'button', onclick: edit }, T.edit)),
+        h('p.j-band-of', null, h('b', null, T.jGoalOf(num(films), num(goal))), ' ', h('span.j-pace' + (films >= goal || ahead >= 0 ? '.up' : ''), null, pace))),
+      h('div.j-band-bar', null,
+        h('div.j-goal-bar', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': goal, 'aria-valuenow': Math.min(films, goal), 'aria-label': T.jGoal },
+          h('i', { style: { width: Math.min(100, films / goal * 100) + '%' } }), h('u', { style: { left: Math.min(100, due / goal * 100) + '%' }, title: T.jGoalDue(due) })),
+        h('p.muted.small', null, T.jGoalDue(due)))];
   };
   put(box, ...show());
   return box;

@@ -1257,6 +1257,7 @@
    "Ennyi volt az éved.": "That was your year.",
    "Napló": "Journal",
    "Időszak": "Period",
+   "Mit, mikor és mennyit néztél ezen a profilon.": "What you watched on this profile, when and how much.",
    "Ez a hónap": "This month",
    "Idén": "This year",
    "Tavaly": "Last year",
