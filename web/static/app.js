@@ -313,6 +313,7 @@ async function route() {
   document.querySelectorAll('.modal-back').forEach(m => m.remove());
   const { parts, q } = parseHash();
   const [p0, p1, p2] = parts;
+  document.title = T.appName; // a view with a title of its own (wizard, title page, player, a page heading) sets it again
   if (!state.status) {
     [state.status, state.branding] = await Promise.all([GET('/api/status', { quiet: true }).catch(() => ({})), GET('/api/branding', { quiet: true }).catch(() => null)]);
     applyBranding();
@@ -335,28 +336,38 @@ async function route() {
   if (p0 === 'quickconnect') rememberAfter(location.hash);
   if (p0 === 'profiles' || !state.me.profile) return viewProfiles(p1 === 'edit');
   if (DEV) deviceSync();
-  document.title = T.appName;
   try {
-    switch (p0) {
-      case undefined: case 'home': return await viewHome();
-      case 'library': return await viewLibrary(+p1, q);
-      case 'item': return await viewItem(+p1);
-      case 'play': return await viewPlayer(+p1, q);
-      case 'search': return await viewSearch(q.get('q') || '');
-      case 'collections': return p1 === 'new' ? await viewCollectionEdit(null, q) : p2 === 'edit' ? await viewCollectionEdit(+p1) : p1 ? await viewCollection(+p1) : await viewCollections();
-      case 'downloads': return await viewDownloads();
-      case 'discover': return await viewDiscover(q);
-      case 'requests': return await viewRequests();
-      case 'party': return await viewPartyJoin(p1);
-      case 'admin': return await viewAdmin(p1 || 'dash');
-      case 'account': return await viewAccount();
-      case 'journal': return await viewJournal(q);
-      default: return go('#/home');
-    }
+    await routeView(p0, p1, p2, q);
+    if (gen === state.gen) titleFromHeading();
   } catch (e) {
     if (!(e instanceof HTTPError)) console.error(e);
     else if (e.status === 404 && gen === state.gen) notFoundView(); // a removed title, or one this profile may not see
   }
+}
+async function routeView(p0, p1, p2, q) {
+  switch (p0) {
+    case undefined: case 'home': return await viewHome();
+    case 'library': return await viewLibrary(+p1, q);
+    case 'item': return await viewItem(+p1);
+    case 'play': return await viewPlayer(+p1, q);
+    case 'search': return await viewSearch(q.get('q') || '');
+    case 'collections': return p1 === 'new' ? await viewCollectionEdit(null, q) : p2 === 'edit' ? await viewCollectionEdit(+p1) : p1 ? await viewCollection(+p1) : await viewCollections();
+    case 'downloads': return await viewDownloads();
+    case 'discover': return await viewDiscover(q);
+    case 'requests': return await viewRequests();
+    case 'party': return await viewPartyJoin(p1);
+    case 'admin': return await viewAdmin(p1 || 'dash');
+    case 'account': return await viewAccount();
+    case 'journal': return await viewJournal(q);
+    default: return go('#/home');
+  }
+}
+// a page with a heading of its own names the browser tab and its history entry ("Filmek – Kinora")
+function titleFromHeading() {
+  if (document.title !== T.appName) return;
+  const h1 = document.querySelector('main .page-head h1, main .a-head h1');
+  const t = h1 && h1.textContent.trim();
+  if (t) document.title = t + ' – ' + T.appName;
 }
 function notFoundView() {
   const main = shell('');
@@ -442,10 +453,17 @@ function shell(active, ...content) {
     h('hr'),
     APP && APP.canSwitchServer && h('button', { role: 'menuitem', onclick: () => APP.switchServer(T.leavingApp) }, T.switchServer),
     h('button', { role: 'menuitem', onclick: () => POST('/api/logout').then(() => { state.me = null; go('#/login'); }) }, T.logout));
-  const avatarBtn = h('button.avatar', { style: { background: p.color }, 'aria-label': p.name, 'aria-haspopup': 'menu', onclick: e => { e.stopPropagation(); menuPop.classList.toggle('hidden'); } }, p.name.slice(0, 1).toUpperCase());
-  const closeMenu = () => menuPop.classList.add('hidden');
+  const avatarBtn = h('button.avatar', { style: { background: p.color }, 'aria-label': p.name, 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: e => {
+    e.stopPropagation();
+    const open = menuPop.classList.toggle('hidden') === false;
+    avatarBtn.setAttribute('aria-expanded', String(open));
+  } }, p.name.slice(0, 1).toUpperCase());
+  const closeMenu = () => { menuPop.classList.add('hidden'); avatarBtn.setAttribute('aria-expanded', 'false'); };
+  // Escape closes the open menu and hands focus back to the button that opened it
+  const escMenu = e => { if (e.key === 'Escape' && !menuPop.classList.contains('hidden')) { closeMenu(); avatarBtn.focus(); } };
   document.addEventListener('click', closeMenu);
-  onCleanup(() => document.removeEventListener('click', closeMenu));
+  document.addEventListener('keydown', escMenu);
+  onCleanup(() => { document.removeEventListener('click', closeMenu); document.removeEventListener('keydown', escMenu); });
   const top = h('header.top' + (active === 'home' ? '' : '.solid'), null,
     brandMark('a'),
     h('nav.nav', { 'aria-label': T.mainMenu },
@@ -464,14 +482,31 @@ function shell(active, ...content) {
   }
   const main = h('main', null, content);
   root.append(top, main);
+  const fit = () => fitTopNav(top);
+  let fitRaf = 0;
+  const onResize = () => { cancelAnimationFrame(fitRaf); fitRaf = requestAnimationFrame(fit); };
+  addEventListener('resize', onResize);
+  onCleanup(() => { removeEventListener('resize', onResize); cancelAnimationFrame(fitRaf); });
+  document.fonts?.ready.then(fit);
   (state.libs ? Promise.resolve(state.libs) : GET('/api/libraries').then(l => (state.libs = l))).then(libs => {
     libsNav.replaceWith(...libs.map(l => h('a' + (active === 'lib' + l.id ? '.on' : ''), { href: '#/library/' + l.id }, l.name)));
-    revealActiveNav(top);
+    fit();
   }).catch(() => {});
   window.scrollTo(0, 0);
   return main;
 }
 
+// When the menu's links no longer fit on one line beside the logo and the search (a narrow window, many libraries),
+// the menu moves to a row of its own and scrolls sideways, as on a phone, instead of wrapping its last links under the first.
+function fitTopNav(top) {
+  const nav = top.querySelector('.nav');
+  if (!nav || !top.isConnected) return;
+  top.classList.remove('stack');
+  const links = nav.children;
+  top.classList.toggle('stack', links.length > 1 && links[links.length - 1].offsetTop > links[0].offsetTop + 1);
+  document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px');
+  revealActiveNav(top);
+}
 // on a phone the menu scrolls sideways; keep the current page's link in view instead of cut off at the edge
 function revealActiveNav(top) {
   const nav = top.querySelector('.nav'), a = nav && nav.querySelector('a.on');
@@ -1776,8 +1811,8 @@ async function viewCollectionEdit(id, q) {
   for (const el of [match, sort, order, limit]) { el.onchange = preview; el.oninput = preview; }
   main.append(h('div.page-head', null, h('h1', null, id ? c.name : T.newSmart)),
     h('div.panel', null,
-      h('div.grid2', null, field(T.collName, name), h('div', { class: 'pt5' }, h('label.check', null, shared, T.shared), h('label.check', null, pinned, T.pinned))),
-      h('h2', null, T.rules), field('', match), rows,
+      h('div.grid2', null, field(T.collName, name), h('div.check-col', null, h('label.check', null, shared, T.shared), h('label.check', null, pinned, T.pinned))),
+      h('h2', { class: 'mt6' }, T.rules), field('', match), rows,
       h('button.btn', { class: 'mt3', onclick: () => { rows.append(ruleRow({ field: 'genre', op: 'is' })); preview(); } }, icon('plus'), T.addRule),
       h('div.grid2', { class: 'mt4' }, field(T.sort, h('div.row-gap', { class: 'nowrap' }, sort, order)), field(T.limit, limit)),
       h('div.row-gap', { class: 'end' }, h('a.btn', { href: id ? '#/collections/' + id : '#/collections' }, T.cancel),
@@ -2325,7 +2360,7 @@ async function viewPlayer(id, q) {
   }
 
   // ---------------------------------------------------------------- subtitles (fetched VTT, shifted by the HLS start offset)
-  let subTrack = null, subGen = 0;
+  let subTrack = null, subGen = 0, cueLine = -3, cueProbe = null;
   // cues are only readable while the track is not 'disabled', so empty it first
   const clearCues = () => { if (subTrack) { subTrack.mode = 'hidden'; for (const c of [...(subTrack.cues || [])]) subTrack.removeCue(c); subTrack.mode = 'disabled'; } };
   async function applySubtitle() {
@@ -2348,11 +2383,33 @@ async function viewPlayer(id, q) {
       for (const c of cues) {
         const s = c.start + subDelay - offset, e = c.end + subDelay - offset;
         if (e <= 0) continue;
-        try { const cue = new VTTCue(Math.max(0, s), e, c.text); cue.line = -3; subTrack.addCue(cue); } catch { /* ignore */ }
+        try { const cue = new VTTCue(Math.max(0, s), e, c.text); cue.line = cueLine; subTrack.addCue(cue); } catch { /* ignore */ }
       }
       subTrack.mode = 'showing';
+      placeCues();
     } catch (e) { toast(T.subtitle + ': ' + e.message, true); }
   }
+  // A cue sits three lines above the picture's bottom edge. While the controls show, it moves up above them:
+  // on a phone held upright the picture fills the screen and three lines are not enough to clear the bar.
+  function placeCues() {
+    if (!subTrack || !subTrack.cues) return;
+    let n = -3;
+    if (!player.classList.contains('idle')) {
+      if (!cueProbe) cueProbe = player.appendChild(h('span', { 'aria-hidden': 'true', style: { position: 'absolute', visibility: 'hidden', fontSize: 'var(--cue)', lineHeight: 'var(--lh-cue)' } }, 'X'));
+      // the bar's own top padding is only its fade; the title above the timeline is the first thing a cue must clear
+      const step = cueProbe.getBoundingClientRect().height, bar = ui.querySelector('.p-bottom > .p-head') || ui.querySelector('.p-bottom');
+      const covered = bar ? video.getBoundingClientRect().bottom - bar.getBoundingClientRect().top : 0;
+      if (step > 0 && covered > 0) n = -Math.max(3, Math.ceil(covered / step) + 1);
+    }
+    if (n === cueLine) return;
+    cueLine = n;
+    for (const c of [...subTrack.cues]) c.line = n;
+    if (subTrack.mode === 'showing') { subTrack.mode = 'hidden'; subTrack.mode = 'showing'; } // a cue on screen keeps its old place until redrawn
+  }
+  const cueWatch = new MutationObserver(placeCues);
+  cueWatch.observe(player, { attributes: true, attributeFilter: ['class'] });
+  addEventListener('resize', placeCues);
+  onCleanup(() => { cueWatch.disconnect(); removeEventListener('resize', placeCues); });
   function parseVTT(text) {
     const out = [];
     const ts = s => { const p = s.trim().split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };

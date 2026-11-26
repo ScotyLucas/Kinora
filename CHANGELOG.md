@@ -5,6 +5,17 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.93 – 2026-11-26
+
+- **Javítva (web):** a felső menü keskenyebb ablakban (vagy sok könyvtárnál) nem törik két sorba, hanem saját, oldalra
+  görgethető sorba kerül; telefonon álló helyzetben a felirat a lejátszó vezérlői fölé kerül, nem alájuk; tömörebb
+  epizódlista telefonon; rendezettebb okosgyűjtemény-szerkesztő telefonon; a böngészőfül az oldal címét mutatja; a
+  profilmenü Escape-re bezárul.
+- **Fixed (web):** in a narrower window (or with many libraries) the top menu no longer wraps onto two lines but gets a
+  row of its own that scrolls sideways; on a phone held upright subtitles sit above the player's controls, not under
+  them; a more compact episode list on phones; a tidier smart collection editor on phones; the browser tab names the
+  page; Escape closes the profile menu.
+
 ## 1.1.92 – 2026-11-26
 
 - **Javítva (web, iPhone, iPad):** Napló: egyforma plakátok hosszú címnél is, szélesebb idővonal-sávok, halvány és nem

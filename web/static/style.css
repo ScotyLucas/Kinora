@@ -180,7 +180,8 @@ p { margin: 0 0 var(--s3); }
 .muted { color: var(--t2); }
 .m0 { margin: 0; } .mt0 { margin-top: 0; } .mb0 { margin-bottom: 0; }
 .mt1 { margin-top: var(--s1); } .mt2 { margin-top: var(--s2); } .mt3 { margin-top: var(--s3); } .mt4 { margin-top: var(--s4); } .mt6 { margin-top: var(--s6); } .mt7 { margin-top: var(--s7); }
-.mb3 { margin-bottom: var(--s3); } .pt5 { padding-top: var(--s5); } .pt9 { padding-top: var(--s9); }
+.mb3 { margin-bottom: var(--s3); } .pt5 { padding-top: var(--s5); }
+.check-col { padding-top: var(--s5); } /* checkboxes beside a field line up with its input, not its label; stacked on a phone they need no offset */ .pt9 { padding-top: var(--s9); }
 .stack { display: grid; gap: var(--s2); }
 .scroll-list { display: grid; gap: var(--frame); max-height: var(--list-h); overflow: auto; margin: var(--s3) 0; }
 .spread { justify-content: space-between; } .end { justify-content: flex-end; } .nowrap, .row-gap.nowrap { flex-wrap: nowrap; } .push { margin-right: auto; }
@@ -358,6 +359,12 @@ body:has(.toolbar .search-field) .search-box kbd { display: none; }
   .nav { mask-image: linear-gradient(90deg, transparent, black var(--gutter), black calc(100% - var(--gutter)), transparent); }
   .search-box { flex: 1; width: auto; }
 }
+/* a wider window whose menu would wrap onto a second line (many libraries, longer words) gets the same row (fitTopNav) */
+.top.stack { flex-wrap: wrap; gap: var(--s2) var(--s5); }
+.top.stack .nav { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--gutter)); padding: 0 var(--gutter);
+  mask-image: linear-gradient(90deg, transparent, black var(--gutter), black calc(100% - var(--gutter)), transparent); }
+.top.stack .nav::-webkit-scrollbar { display: none; }
+.top.stack .search-box { margin-left: auto; }
 
 main { padding: 0 var(--gutter) var(--s8); }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--s4); flex-wrap: wrap; margin: var(--s6) 0 var(--s5); }
@@ -444,7 +451,7 @@ main { padding: 0 var(--gutter) var(--s8); }
 
 /* ============================================================ library browser */
 .browse { display: grid; grid-template-columns: var(--col-side) 1fr; gap: var(--s7); align-items: start; }
-.filters { position: sticky; top: calc(var(--hit) + var(--s5)); max-height: calc(100vh - var(--hit) - var(--s6)); overflow-y: auto; padding-right: var(--s2); }
+.filters { position: sticky; top: calc(var(--top-h, calc(var(--hit) + var(--s4))) + var(--s2)); max-height: calc(100vh - var(--top-h, calc(var(--hit) + var(--s4))) - var(--s4)); overflow-y: auto; padding-right: var(--s2); }
 .filters h2 { font-family: var(--display); font-size: var(--f3); font-weight: 600; color: var(--t2); margin: var(--s5) 0 var(--s1); padding-bottom: var(--s1); border-bottom: var(--hair) solid var(--rule); letter-spacing: .03em; }
 .filters h2:first-child { margin-top: 0; }
 .filters .btn { width: 100%; white-space: normal; text-align: center; padding-top: var(--s2); padding-bottom: var(--s2); }
@@ -515,8 +522,7 @@ main { padding: 0 var(--gutter) var(--s8); }
   .detail { grid-template-columns: 1fr; gap: var(--s4); }
   .detail .poster { display: none; }
   .below { grid-template-columns: 1fr; }
-  .ep { grid-template-columns: var(--col-xs) 1fr; }
-  .ep > :last-child { grid-column: 1 / -1; justify-content: flex-end; }
+  .ep { grid-template-columns: var(--col-xs) minmax(0, 1fr) auto; gap: var(--s3); } /* the watched button stays beside the text, not on a row of its own */
 }
 
 /* ============================================================ booth register: rules, not panels */
@@ -578,6 +584,7 @@ pre.code { background: var(--g1); border-left: var(--hair) solid var(--rule-hi);
   .admin-mitems a { white-space: nowrap; min-height: var(--hit); border-radius: 0; border-bottom: var(--frame) solid transparent; }
   .admin-mitems a.on { color: var(--amber); border-bottom-color: var(--amber); }
   .grid2 { grid-template-columns: 1fr; }
+  .check-col { padding-top: 0; }
 }
 
 /* admin: shared polish */
