@@ -1130,6 +1130,9 @@
    "episode": "Episode"
   },
   "app": {
+   "Befejezés: {0}": "Ends at {0}",
+   "{0}, befejezés: {1}": "{0}, ends at {1}",
+   "Vált a hátralévő idő és a befejezés időpontja között.": "Switches between the time left and the time the film ends.",
    "Hány filmet és epizódot láttál ebben a hónapban.": "How many films and episodes you watched this month.",
    "{0} film": {"one": "{0} film", "other": "{0} films"},
    "{0} a Naplóban": "{0} in your journal",

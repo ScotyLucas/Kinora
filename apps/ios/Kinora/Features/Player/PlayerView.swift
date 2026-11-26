@@ -321,6 +321,8 @@ private struct Scrubber: View {
     var ended: () -> Void
     @State private var scrub: Double?
     @State private var commitTask: Task<Void, Never>?
+    /// The right end shows the time left, or after a tap the clock time the film ends.
+    @AppStorage("kinora.playerEndTime") private var showEnd = false
 
     var body: some View {
         let pos = scrub ?? player.position
@@ -357,8 +359,19 @@ private struct Scrubber: View {
                     Text(t).lineLimit(1)
                 }
                 Spacer()
-                Text("−" + PlayerView.clock(max(0, player.duration - pos)))
-                    .accessibilityLabel(L("Hátralévő idő: {0}", PlayerView.clock(max(0, player.duration - pos))))
+                Group {
+                    if showEnd {
+                        Text(player.endClock(from: pos))
+                            .accessibilityLabel(L("Befejezés: {0}", player.endClock(from: pos)))
+                    } else {
+                        Text("−" + PlayerView.clock(max(0, player.duration - pos)))
+                            .accessibilityLabel(L("Hátralévő idő: {0}", PlayerView.clock(max(0, player.duration - pos))))
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { Haptic.select.play(); showEnd.toggle() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(L("Vált a hátralévő idő és a befejezés időpontja között."))
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.white.opacity(0.8))

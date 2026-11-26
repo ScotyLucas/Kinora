@@ -115,6 +115,13 @@ final class PlayerModel: NSObject {
 
     var duration: Double { info?.duration ?? item.runtimeSec ?? 0 }
 
+    /// The clock time playback ends when it runs on from `position` at the current speed, e.g. "22:38".
+    func endClock(from position: Double) -> String {
+        let left = max(0, duration - position) / Double(max(speed, 0.1))
+        return Date().addingTimeInterval(left)
+            .formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(Language.shared.locale))
+    }
+
     /// Loading or stalled: a watch party waits for this viewer.
     var waiting: Bool { loading || buffering }
 

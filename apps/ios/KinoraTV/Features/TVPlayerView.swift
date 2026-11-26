@@ -17,6 +17,8 @@ struct TVPlayerView: View {
 
     @FocusState private var focus: Focus?
     @State private var chrome = true
+    /// The timeline's right end shows the time left, or the clock time the film ends (a long press switches).
+    @AppStorage("kinora.playerEndTime") private var showEnd = false
     @State private var hideTask: Task<Void, Never>?
     @State private var seekFlash: Double?
     @State private var flashTask: Task<Void, Never>?
@@ -97,7 +99,7 @@ struct TVPlayerView: View {
                 Spacer()
                 promptButtons
             }
-            TVTimeline(player: player, focused: focus == .timeline)
+            TVTimeline(player: player, focused: focus == .timeline, showEnd: showEnd)
                 .opacity(chrome ? 1 : 0)
                 .focusable()
                 .focused($focus, equals: .timeline)
@@ -109,6 +111,9 @@ struct TVPlayerView: View {
                     }
                 }
                 .onTapGesture { player.togglePlay(); show() }
+                // A long press switches the right end between the time left and the clock time the film ends.
+                .onLongPressGesture(minimumDuration: 0.5) { showEnd.toggle(); show() }
+                .accessibilityAction(named: L("Vált a hátralévő idő és a befejezés időpontja között.")) { showEnd.toggle() }
             if chrome {
                 TVMenuRow(player: player, focus: $focus)
                     .equatable()
@@ -415,6 +420,7 @@ private struct TVMenuRow: View, Equatable {
 private struct TVTimeline: View {
     var player: PlayerModel
     var focused: Bool
+    var showEnd: Bool
 
     var body: some View {
         let d = player.duration
@@ -440,7 +446,7 @@ private struct TVTimeline: View {
                 Image(systemName: player.isPlaying ? "play.fill" : "pause.fill").foregroundStyle(Theme.plaster)
                 Text(TVPlayerView.clock(player.position))
                 Spacer()
-                Text("−" + TVPlayerView.clock(d - player.position))
+                Text(showEnd ? player.endClock(from: player.position) : "−" + TVPlayerView.clock(d - player.position))
             }
             .font(.callout.monospacedDigit())
             .foregroundStyle(Theme.plaster)
@@ -448,7 +454,9 @@ private struct TVTimeline: View {
         .animation(.easeOut(duration: 0.15), value: focused)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(L("Lejátszási pozíció"))
-        .accessibilityValue(L("{0}, hátra {1}", TVPlayerView.clock(player.position), TVPlayerView.clock(d - player.position)))
+        .accessibilityValue(showEnd
+            ? L("{0}, befejezés: {1}", TVPlayerView.clock(player.position), player.endClock(from: player.position))
+            : L("{0}, hátra {1}", TVPlayerView.clock(player.position), TVPlayerView.clock(d - player.position)))
         .accessibilityHint(L("Balra vagy jobbra 10 másodpercet ugrik."))
     }
 }
