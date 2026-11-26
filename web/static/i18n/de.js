@@ -1016,6 +1016,7 @@
   "currentPw": "Aktuelles Passwort",
   "newPw": "Neues Passwort",
   "timeline": "Zeitleiste",
+  "timeEndToggle": "Restzeit / endet um",
   "volume": "Lautstärke",
   "noHls": "Dieser Browser unterstützt kein HLS.",
   "whyDetails": "Details: ⓘ",

@@ -1022,6 +1022,7 @@
   "currentPw": "Current password",
   "newPw": "New password",
   "timeline": "Timeline",
+  "timeEndToggle": "Time left / ends at",
   "volume": "Volume",
   "noHls": "This browser doesn’t support HLS.",
   "whyDetails": "details: ⓘ",

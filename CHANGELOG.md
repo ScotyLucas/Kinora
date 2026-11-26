@@ -5,6 +5,11 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Újdonság (web):** a lejátszóban a hátralévő időre kattintva az látszik, hány órakor ér véget a film (pl. 22:38,
+  a lejátszási sebességgel számolva); újabb kattintás visszavált. A választás megmarad.
+- **New (web):** in the player, clicking the time left shows the clock time the film ends (e.g. 22:38, at the
+  current playback speed); another click switches back. The choice is remembered.
+
 ## 1.1.9 – 2026-11-26
 
 - **Újdonság (minden platform):** Napló a fiókmenüben. Mit néztél, mikor és mennyit (ez a hónap, idén, tavaly,

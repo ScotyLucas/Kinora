@@ -2152,7 +2152,10 @@ async function viewPlayer(id, q) {
   const spinner = h('div.spin', { role: 'progressbar', 'aria-label': T.loading });
   const mid = h('div.p-mid', null, spinner);
   const titleEl = h('h2'), subEl = h('div.s');
-  const timeEl = h('span.p-time', null, '0:00'), remEl = h('span.p-time.rem', null, '');
+  const timeEl = h('span.p-time', null, '0:00'), remEl = h('button.p-time.rem', { type: 'button', title: T.timeEndToggle, 'aria-label': T.timeEndToggle }, '');
+  // the right end of the time line shows the time left, or, after a click, the clock time the film ends (at the current speed)
+  let showEnd = localStorage.getItem('kinora-endtime') === '1';
+  remEl.onclick = e => { e.stopPropagation(); showEnd = !showEnd; try { localStorage.setItem('kinora-endtime', showEnd ? '1' : ''); } catch { /* private mode */ } paintTimeline(); };
   const rail = h('div.rail'), ready = h('div.ready'), done = h('div.done'), knob = h('div.knob'), hoverT = h('div.hover-t.hidden');
   const timeline = h('div.timeline', { role: 'slider', tabindex: 0, 'aria-label': T.timeline, 'aria-valuemin': 0 }, rail, ready, done, knob, hoverT);
   const playBtn = h('button.p-btn.p-main', { 'aria-label': T.play }, icon('play'));
@@ -2456,7 +2459,10 @@ async function viewPlayer(id, q) {
     ready.style.left = (isHLS() ? offset / d * 100 : 0) + '%';
     ready.style.width = (Math.max(0, Math.min(d, te) - (isHLS() ? offset : 0)) / d * 100) + '%';
     timeEl.textContent = fmtTime(p);
-    remEl.textContent = duration ? '−' + fmtTime(Math.max(0, duration - p)) : '';
+    const left = Math.max(0, duration - p);
+    remEl.textContent = !duration ? '' : showEnd
+      ? new Date(Date.now() + left / (video.playbackRate || 1) * 1000).toLocaleTimeString(T.locale, { hour: '2-digit', minute: '2-digit' })
+      : '−' + fmtTime(left);
     timeline.setAttribute('aria-valuemax', Math.round(duration));
     timeline.setAttribute('aria-valuenow', Math.round(p));
     timeline.setAttribute('aria-valuetext', fmtTime(p));

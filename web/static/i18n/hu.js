@@ -998,6 +998,7 @@
   "currentPw": "Jelenlegi jelszó",
   "newPw": "Új jelszó",
   "timeline": "Idővonal",
+  "timeEndToggle": "Hátralévő idő / befejezés időpontja",
   "volume": "Hangerő",
   "noHls": "A böngésző nem támogatja a HLS-t.",
   "whyDetails": "részletek: ⓘ",

@@ -818,7 +818,8 @@ label.switch-row > span { color: var(--t0); }
 .p-line { display: flex; align-items: center; gap: var(--s4); }
 .p-line .timeline { flex: 1; min-width: 0; }
 .p-time { font-family: var(--text); font-variant-numeric: tabular-nums; font-size: var(--f1); font-weight: 700; color: var(--t0); white-space: nowrap; min-width: 3.5em; }
-.p-time.rem { color: var(--t2); text-align: right; }
+.p-time.rem { color: var(--t2); text-align: right; background: none; border: 0; padding: 0; cursor: pointer; border-radius: var(--r1, 4px); }
+.p-time.rem:hover { color: var(--t0); }
 /* sound | transport | everything else: the middle stays centred whatever the sides hold */
 .p-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--s4); }
 .p-l, .p-c, .p-r { display: flex; align-items: center; gap: var(--s1); }
