@@ -5,6 +5,17 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.94 – 2026-11-26
+
+- **Új (web, iPhone, iPad):** bővebb Napló: csillagos értékelés, újranézés jelzése, félbehagyott címek (elrejthetők),
+  rendezők, színészek, országok és évtizedek, napszak-hőtérkép, rekordok (sorozat, legnagyobb nap és hét, darálós
+  hétvégék), órákra, epizódokra és műfajra szóló éves vagy havi célok, kihívások (rendező, színész, filmsorozat, saját
+  lista), és kézzel felvehető nézés TMDB-kereséssel.
+- **New (web, iPhone, iPad):** a richer Journal: star ratings, a rewatch badge, titles left unfinished (which can be
+  hidden), directors, actors, countries and decades, a time-of-day heatmap, records (streak, biggest day and week, binge
+  weekends), yearly or monthly goals for hours, episodes and a genre, challenges (a director, an actor, a film series, an
+  own list), and viewings added by hand through a TMDB search.
+
 ## 1.1.93 – 2026-11-26
 
 - **Javítva (web):** a felső menü keskenyebb ablakban (vagy sok könyvtárnál) nem törik két sorba, hanem saját, oldalra

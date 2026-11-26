@@ -3,6 +3,8 @@ import Foundation
 /// One finished viewing in the Napló (GET /api/journal). The server keeps a snapshot of the title,
 /// so a viewing stays after its file is gone; `itemId` and `imageId` are then nil.
 public struct JournalEvent: Codable, Sendable, Hashable {
+    /// The viewing's own id (0 from an older server): the key of its rating and of deleting one added by hand.
+    public var id: Int64
     public var at: Int64
     public var kind: String
     public var title: String
@@ -16,15 +18,34 @@ public struct JournalEvent: Codable, Sendable, Hashable {
     public var itemId: Int?
     public var imageId: Int?
     public var updatedAt: Int64?
+    /// The film's (or the episode's series') TMDB id, 0 when unknown.
+    public var tmdbId: Int64
+    /// The profile's stars for the title, 0…5 (0: none).
+    public var rating: Int
+    /// A TMDB poster URL, for a viewing added by hand (no library artwork).
+    public var poster: String?
+    /// From TMDB once fetched: the directors (a series' creators), the top of the cast and the countries (ISO codes).
+    public var directors: [String]
+    public var cast: [String]
+    public var countries: [String]
 
     // The client decodes with .convertFromSnakeCase: series_title arrives as seriesTitle.
     enum CodingKeys: String, CodingKey {
-        case at, kind, title, seriesTitle, season, episode, year, runtimeSec, genres, source, itemId, imageId, updatedAt
+        case id, at, kind, title, seriesTitle, season, episode, year, runtimeSec, genres, source, itemId, imageId, updatedAt
+        case tmdbId, rating, poster, directors, cast, countries
     }
 
     public init(at: Int64, kind: String = "movie", title: String, seriesTitle: String? = nil, season: Int? = nil, episode: Int? = nil,
                 year: Int? = nil, runtimeSec: Int = 0, genres: [String] = [], source: String = "play",
-                itemId: Int? = nil, imageId: Int? = nil, updatedAt: Int64? = nil) {
+                itemId: Int? = nil, imageId: Int? = nil, updatedAt: Int64? = nil, id: Int64 = 0, tmdbId: Int64 = 0, rating: Int = 0,
+                poster: String? = nil, directors: [String] = [], cast: [String] = [], countries: [String] = []) {
+        self.id = id
+        self.tmdbId = tmdbId
+        self.rating = rating
+        self.poster = poster
+        self.directors = directors
+        self.cast = cast
+        self.countries = countries
         self.at = at
         self.kind = kind
         self.title = title
@@ -44,9 +65,18 @@ public struct JournalEvent: Codable, Sendable, Hashable {
     /// The film, or the series of an episode.
     public var showTitle: String { isEpisode ? (seriesTitle?.isEmpty == false ? seriesTitle! : title) : title }
     public var date: Date { Date(timeIntervalSince1970: TimeInterval(at)) }
+    /// Added by hand (seen outside Kinora): only such a viewing can be deleted.
+    public var isManual: Bool { source == "manual" }
 
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(Int64.self, forKey: .id) ?? 0
+        tmdbId = try c.decodeIfPresent(Int64.self, forKey: .tmdbId) ?? 0
+        rating = try c.decodeIfPresent(Int.self, forKey: .rating) ?? 0
+        poster = try c.decodeIfPresent(String.self, forKey: .poster)
+        directors = try c.decodeIfPresent([String].self, forKey: .directors) ?? []
+        cast = try c.decodeIfPresent([String].self, forKey: .cast) ?? []
+        countries = try c.decodeIfPresent([String].self, forKey: .countries) ?? []
         at = try c.decode(Int64.self, forKey: .at)
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "movie"
         title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""

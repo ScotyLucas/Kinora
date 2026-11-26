@@ -37,6 +37,19 @@ struct JournalView: View {
     @State private var goalError: String?
     /// The bucket to select on the first load instead of the latest one.
     @State private var startBucket: Int?
+    /// The period's viewings and what is worked out from them beyond the summary.
+    @State private var events: [JournalEvent] = []
+    @State private var insights: JournalInsights?
+    /// The how-manieth viewing of its film a viewing is, by `viewKey`.
+    @State private var nth: [String: Int] = [:]
+    /// Stars given on this screen since the last load, by viewing id.
+    @State private var stars: [Int64: Int] = [:]
+    @State private var targets: [JournalTarget] = []
+    @State private var challenges: [JournalChallenge] = []
+    @State private var abandoned: [Item] = []
+    @State private var addingViewing = false
+    @State private var deletingViewing: JournalEvent?
+    @State private var actionError: String?
 
     init(start: (period: JournalPeriod, bucket: Int)? = nil, open: @escaping (Item) -> Void) {
         self.open = open
@@ -56,15 +69,19 @@ struct JournalView: View {
                     if s.isEmpty {
                         ContentUnavailableView(L("Ebben az időszakban még nincs megnézett film vagy epizód."), systemImage: "film.stack",
                                                description: Text(L("Amit végignézel (vagy megnézettnek jelölsz), itt jelenik meg.")))
+                        goals(films: 0)
                     } else {
                         headline(s)
                         stats(s)
-                        if period == .year { goal(films: s.films) }
+                        goals(films: s.films)
                         timeline(s)
                         if !s.genres.isEmpty { meters(L("Műfajok"), s.genres.prefix(6).map { ($0.name, $0.count) }) }
                         if !s.decades.isEmpty { meters(L("Évtizedek"), s.decades.prefix(6).map { ("\(String($0.decade))–\(String($0.decade + 9).suffix(2))", $0.count) }) }
                         when(s)
+                        if let i = insights { more(i) }
                     }
+                    JournalChallenges(challenges: challenges, canEdit: canEditJournal, open: open) { Task { await loadExtras() } }
+                    JournalAbandoned(items: abandoned, open: open) { Task { await loadExtras() } }
                 } else {
                     LoadingState(error: error) { Task { await load() } }
                 }
@@ -78,6 +95,11 @@ struct JournalView: View {
         .navigationTitle(L("Napló"))
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            if canEditJournal {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { addingViewing = true } label: { Label(L("Nézés hozzáadása"), systemImage: "plus") }
+                }
+            }
             if let s = summary, !s.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     if let card {
@@ -110,6 +132,21 @@ struct JournalView: View {
         } message: {
             Text(goalError ?? "")
         }
+        .sheet(isPresented: $addingViewing) { JournalAddViewingSheet { Task { await load() } } }
+        .confirmationDialog(L("Törlöd ezt a kézzel felvett nézést?"), isPresented: Binding(get: { deletingViewing != nil }, set: { if !$0 { deletingViewing = nil } }),
+                            titleVisibility: .visible) {
+            Button(L("Törlés"), role: .destructive) {
+                guard let e = deletingViewing else { return }
+                Task {
+                    do { try await model.api { try await $0.deleteJournalViewing(e.id) }; await load() } catch { actionError = error.localizedDescription }
+                }
+            }
+        }
+        .alert(L("Nem sikerült"), isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+            Button(L("Rendben"), role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
         .refreshable { await load() }
         .task(id: period) { await load() }
     }
@@ -125,16 +162,35 @@ struct JournalView: View {
                 prev = JournalSummary(events: pe, period: period)
             }
             previous = prev
+            events = evs
+            let ins = JournalInsights(events: evs)
+            insights = ins
+            nth = Dictionary(zip(evs.map(Self.viewKey), ins.nth), uniquingKeysWith: { a, _ in a })
+            stars = [:]
             summary = s
             selected = startBucket ?? s.latestBucket?.key
             startBucket = nil
             error = nil
             card = nil
+            await loadExtras()
             card = await renderCard(s)
         } catch {
             if summary == nil { self.error = error.localizedDescription }
         }
     }
+
+    /// Goals, challenges and the unfinished titles; none of them is needed for the rest, so a failure leaves them out.
+    private func loadExtras() async {
+        async let t = try? model.api { try await $0.journalTargets() }
+        async let c = try? model.api { try await $0.journalChallenges() }
+        async let a = try? model.api { try await $0.journalAbandoned() }
+        let (tt, cc, aa) = await (t, c, a)
+        targets = tt ?? []
+        challenges = cc ?? []
+        abandoned = aa ?? []
+    }
+
+    static func viewKey(_ e: JournalEvent) -> String { "\(e.id)|\(e.at)|\(e.title)" }
 
     /// Draws the share card with the posters of the most watched titles (those already loadable).
     private func renderCard(_ s: JournalSummary) async -> Image? {
@@ -189,12 +245,57 @@ struct JournalView: View {
                 .accessibilityValue(L("{0} / {1} film", films, g))
                 Text(L("{0} / {1} film", films, g)).font(.footnote).foregroundStyle(Theme.muted)
             }
-        } else if canEditGoal {
-            Button { goalText = "52"; goalEditing = true } label: {
-                Label(L("Éves cél beállítása"), systemImage: "target")
+        }
+    }
+
+    /// Journal changes the server allows: not from a kids profile.
+    private var canEditJournal: Bool { model.me?.profile != nil && model.me?.profile?.isKids != true }
+
+    /// The yearly film goal (year view) and the other goals of the period, with the button for a new one.
+    @ViewBuilder private func goals(films: Int) -> some View {
+        if period == .year || period == .month {
+            VStack(alignment: .leading, spacing: 18) {
+                if period == .year { goal(films: films) }
+                JournalTargets(targets: targets, events: events, monthOnly: period == .month, canEdit: canEditGoal,
+                               genres: Array(Set(events.flatMap(\.genres))).sorted()) {
+                    Task { await loadExtras() }
+                }
             }
-            .buttonStyle(.bordered)
-            .tint(Theme.plaster)
+        }
+    }
+
+    /// People, countries, rewatches, stars, the hour map and the records.
+    @ViewBuilder private func more(_ i: JournalInsights) -> some View {
+        if !i.directors.isEmpty { meters(L("Rendezők és alkotók"), i.directors.prefix(6).map { ($0.name, $0.count) }) }
+        if !i.cast.isEmpty { meters(L("Színészek"), i.cast.prefix(6).map { ($0.name, $0.count) }) }
+        if !i.countries.isEmpty {
+            meters(L("Országok"), i.countries.prefix(6).map { ("\(JournalCountry.flag($0.name)) \(JournalCountry.name($0.name))", $0.count) })
+        }
+        if !i.rewatched.isEmpty { meters(L("Újranézett filmek"), i.rewatched.prefix(6).map { ($0.name, $0.count) }) }
+        if let avg = i.averageRating {
+            VStack(alignment: .leading, spacing: 0) {
+                sectionTitle(L("Értékeléseid")).padding(.bottom, 4)
+                Text(L("{0} film átlaga: {1} csillag", i.rated.count, avg.formatted(.number.precision(.fractionLength(1)))))
+                    .foregroundStyle(Theme.muted).padding(.bottom, 6)
+                ForEach(Array(i.rated.prefix(5).enumerated()), id: \.offset) { _, e in
+                    HStack {
+                        Text(e.title).foregroundStyle(Theme.plaster).lineLimit(1)
+                        Spacer()
+                        JournalStars(rating: e.rating)
+                    }
+                    .padding(.vertical, 8)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Theme.rule).frame(height: 1) }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle(L("Napszakok"))
+            JournalHeatmap(heat: i.heat)
+        }
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle(L("Rekordok"))
+            JournalRecords(insights: i)
         }
     }
 
@@ -316,19 +417,66 @@ struct JournalView: View {
     }
 
     private func poster(_ e: JournalEvent) -> some View {
-        Button { Task { await openItem(e) } } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                JournalArtwork(imageId: e.imageId, title: e.showTitle)
-                    .aspectRatio(2 / 3, contentMode: .fit)
+        let n = nth[Self.viewKey(e)] ?? 0
+        let rating = stars[e.id] ?? e.rating
+        return VStack(alignment: .leading, spacing: 4) {
+            Button { Task { await openItem(e) } } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Group {
+                        if e.imageId == nil, let url = e.poster {
+                            RemotePoster(url: url, title: e.showTitle)
+                        } else {
+                            JournalArtwork(imageId: e.imageId, title: e.showTitle).aspectRatio(2 / 3, contentMode: .fit)
+                        }
+                    }
+                    .overlay(alignment: .topLeading) {
+                        if n > 1 {
+                            Text(L("{0}. nézés", n))
+                                .font(.caption2.weight(.bold)).foregroundStyle(Theme.amberInk)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Theme.amber, in: Capsule())
+                                .padding(5)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if e.isManual {
+                            Image(systemName: "hand.point.up.left.fill").font(.caption2).foregroundStyle(Theme.plaster)
+                                .padding(5).background(.black.opacity(0.5), in: Circle()).padding(5)
+                                .accessibilityLabel(L("kézzel felvéve"))
+                        }
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 6))
-                Text(e.showTitle).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.plasterBright).lineLimit(1)
-                Text(posterSub(e)).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                    Text(e.showTitle).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.plasterBright).lineLimit(1)
+                    Text(posterSub(e)).font(.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                }
             }
-            .frame(width: metrics.poster)
+            .buttonStyle(.plain)
+            .disabled(e.itemId == nil)
+            .accessibilityElement(children: .combine)
+            .contextMenu {
+                if e.isManual && e.id > 0 && canEditJournal {
+                    Button(role: .destructive) { deletingViewing = e } label: { Label(L("Nézés törlése"), systemImage: "trash") }
+                }
+            }
+            if !e.isEpisode && e.id > 0 {
+                JournalStars(rating: rating, set: { v in rate(e, v) })
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(e.itemId == nil)
-        .accessibilityElement(children: .combine)
+        .frame(width: metrics.poster)
+    }
+
+    /// Stars for a film; they show at once and go back if the server refuses them.
+    private func rate(_ e: JournalEvent, _ v: Int) {
+        let before = stars[e.id] ?? e.rating
+        // every viewing of the same film shows the same stars
+        for x in events where !x.isEpisode && (x.id == e.id || (e.tmdbId > 0 && x.tmdbId == e.tmdbId)) { stars[x.id] = v }
+        Task {
+            do { try await model.api { try await $0.setJournalRating(event: e.id, rating: v) } }
+            catch {
+                for x in events where !x.isEpisode && (x.id == e.id || (e.tmdbId > 0 && x.tmdbId == e.tmdbId)) { stars[x.id] = before }
+                actionError = error.localizedDescription
+            }
+        }
     }
 
     private func meters(_ title: String, _ rows: [(String, Int)]) -> some View {

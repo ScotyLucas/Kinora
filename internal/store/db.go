@@ -628,6 +628,55 @@ INSERT INTO watch_events(profile_id,item_id,series_id,kind,title,series_title,se
 	`ALTER TABLE profiles ADD COLUMN journal_goal INTEGER NOT NULL DEFAULT 0;`,
 	// the month (YYYY-MM) whose recap card the profile has closed, on every device at once
 	`ALTER TABLE profiles ADD COLUMN journal_recap_seen TEXT NOT NULL DEFAULT '';`,
+	// Napló 2: the TMDB id of what was watched (the series for an episode), a 1..5 star rating per viewing
+	// (0 = none) and a TMDB poster path for viewings added by hand; TMDB credits (directors, cast,
+	// countries) cached per title for the breakdowns; more goals; challenges; abandoned titles put away
+	`ALTER TABLE watch_events ADD COLUMN tmdb_id INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE watch_events ADD COLUMN rating INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE watch_events ADD COLUMN poster TEXT NOT NULL DEFAULT '';
+UPDATE watch_events SET tmdb_id=COALESCE((SELECT CASE WHEN i.tmdb_id>0 THEN i.tmdb_id ELSE 0 END FROM items i
+  WHERE i.id=CASE WHEN watch_events.kind='episode' THEN watch_events.series_id ELSE watch_events.item_id END),0);
+CREATE INDEX watch_events_tmdb ON watch_events(profile_id, tmdb_id);
+CREATE TABLE tmdb_credits(
+  kind TEXT NOT NULL CHECK(kind IN ('movie','series')),
+  tmdb_id INTEGER NOT NULL,
+  directors TEXT NOT NULL DEFAULT '',
+  cast_names TEXT NOT NULL DEFAULT '',
+  countries TEXT NOT NULL DEFAULT '',
+  fetched_at INTEGER NOT NULL,
+  PRIMARY KEY(kind, tmdb_id)
+);
+CREATE TABLE journal_goals(
+  id INTEGER PRIMARY KEY,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  period TEXT NOT NULL CHECK(period IN ('year','month')),
+  metric TEXT NOT NULL CHECK(metric IN ('films','hours','episodes','genre')),
+  genre TEXT NOT NULL DEFAULT '',
+  target INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX journal_goals_profile ON journal_goals(profile_id);
+CREATE TABLE journal_challenges(
+  id INTEGER PRIMARY KEY,
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX journal_challenges_profile ON journal_challenges(profile_id);
+CREATE TABLE journal_challenge_items(
+  challenge_id INTEGER NOT NULL REFERENCES journal_challenges(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('movie','series')),
+  tmdb_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  year INTEGER,
+  poster TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY(challenge_id, kind, tmdb_id)
+);
+CREATE TABLE journal_hidden(
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  PRIMARY KEY(profile_id, item_id)
+);`,
 }
 
 // ErrNewerSchema: the database was written by a newer Kinora (after rolling back an update, for example).

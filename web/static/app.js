@@ -1865,15 +1865,30 @@ async function viewJournal(q) {
   const [from, to, unit] = periods[per]();
   const pick = h('nav.chips.j-period', { 'aria-label': T.jPeriod }, Object.keys(periods).map(k =>
     h('a.chip' + (k === per ? '.on' : ''), { href: '#/journal?p=' + k, 'aria-current': k === per ? 'page' : null }, T.jPeriods[k])));
-  main.append(h('div.page-head', null, h('div', null, h('h1', null, T.journal), h('span.muted', null, T.jLede)), pick));
+  const canEdit = jCanEdit();
+  main.append(h('div.page-head', null, h('div', null, h('h1', null, T.journal), h('span.muted', null, T.jLede)),
+    h('div.j-head-actions', null, pick, canEdit && h('button.btn.small', { type: 'button', onclick: () => jAddViewing() }, '＋ ' + T.jAdd))));
   // the same stretch of the period before (month and year so far, last year against the one before it)
   const prevFrom = { month: new Date(Y, M - 1, 1), year: new Date(Y - 1, 0, 1), last: new Date(Y - 2, 0, 1) }[per];
   const prevTo = prevFrom && (per === 'last' ? new Date(Y - 1, 0, 1) : new Date(Math.min(prevFrom.getTime() + (now - from), from.getTime())));
   const span = (a, b) => `/api/journal?from=${Math.floor(a / 1000)}&to=${Math.floor(b / 1000)}`;
-  const [r, prev] = await Promise.all([GET(span(from, to)), prevFrom ? GET(span(prevFrom, prevTo), { quiet: true }).catch(() => null) : null]);
+  const quiet = p => GET(p, { quiet: true }).catch(() => null);
+  const [r, prev, goals, challenges, abandoned] = await Promise.all([GET(span(from, to)), prevFrom ? quiet(span(prevFrom, prevTo)) : null,
+    quiet('/api/journal/goals'), quiet('/api/journal/challenges'), quiet('/api/journal/abandoned')]);
   let evs = r.events;
   if (unit === 'year' && evs.length) evs = evs.filter(e => e.at > 0);
-  if (!evs.length) { main.append(emptyNote(T.jEmpty, T.jEmptyHint, h('a.btn', { href: '#/home' }, T.home))); return; }
+  // what does not depend on the period's viewings: challenges and the titles left early
+  const extras = () => [jChallenges(challenges || [], canEdit), jAbandoned(abandoned || [])];
+  if (!evs.length) {
+    main.append(emptyNote(T.jEmpty, T.jEmptyHint, h('a.btn', { href: '#/home' }, T.home)));
+    if (per === 'year' || per === 'month') main.append(jGoals(goals || [], [], per, canEdit));
+    main.append(...extras());
+    return;
+  }
+  // rewatches: the how-manieth viewing of a film within the period
+  const filmKey = e => e.tmdb_id ? 't' + e.tmdb_id : e.title + '|' + (e.year || '');
+  const nth = new Map();
+  for (const e of evs) if (e.kind === 'movie') { const k = filmKey(e); nth.set(k, (nth.get(k) || 0) + 1); e._nth = nth.get(k); }
 
   const films = evs.filter(e => e.kind === 'movie'), eps = evs.filter(e => e.kind === 'episode');
   const shows = new Set(eps.map(e => e.series_title || e.title)).size;
@@ -1899,6 +1914,7 @@ async function viewJournal(q) {
   if (pe) main.append(h('p.muted.small.j-vs', null, T.jVs[per]));
   else if (prevFrom && prev === null) main.append(h('p.muted.small.j-vs', null, T.jVsFail));
   if (per === 'year') main.append(goalBlock(films.length));
+  if (per === 'year' || per === 'month') main.append(jGoals(goals || [], evs, per, canEdit));
   if (per === 'year' || per === 'last') main.append(h('p.j-recap-open', null, h('button.btn.primary', { onclick: () => openRecap() }, '▶ ' + T.jRecap)));
 
   // timeline: one bar per day, month or year; a click lists that bucket's titles
@@ -1926,12 +1942,21 @@ async function viewJournal(q) {
       list.length ? h('div.j-posters', null, [...list].reverse().map(posterOf)) : h('p.muted', null, T.jNone));
   };
   const posterOf = e => {
-    const art = e.image_id ? artImg({ id: e.image_id, kind: e.kind === 'episode' ? 'series' : 'movie', title: e.series_title || e.title, year: e.year, updated_at: e.updated_at }, 'poster', '')
-      : h('div.art.noart', null, h('div.ph', null, e.series_title || e.title));
+    const art = jArt(e);
+    if (e._nth > 1) art.append(h('span.j-again', { title: T.jRewatchN(e._nth) }, T.jRewatchShort(e._nth)));
+    if (e.source === 'manual') art.append(h('span.j-manual', { title: T.jManual }, '✎'));
     const when = new Date(e.at * 1000).toLocaleDateString(T.locale, { month: 'short', day: 'numeric' });
     const sub = e.kind === 'episode' ? [e.season != null && e.episode != null ? T.ep(e.season, e.episode) : '', e.title].filter(Boolean).join(' · ') : (e.year || '');
     const body = [art, h('div.cap', null, h('b', null, e.series_title || e.title), sub && h('span', null, sub), h('span.muted', null, when))];
-    return e.item_id ? h('a.j-poster', { href: '#/item/' + e.item_id }, body) : h('div.j-poster', null, body);
+    const name = e.series_title ? e.series_title + ' · ' + e.title : e.title;
+    return h('div.j-poster', null, e.item_id ? h('a.j-poster-link', { href: '#/item/' + e.item_id }, body) : h('div.j-poster-link', null, body),
+      starPicker(e.rating || 0, async v => {
+        try { await api('PUT', `/api/journal/events/${e.id}/rating`, { rating: v }); e.rating = v; return true; } catch { return false; }
+      }, T.jRateOf(name)),
+      e.source === 'manual' && canEdit && h('button.btn.ghost.small.j-del', { type: 'button', onclick: async () => {
+        if (!await confirmBox(T.jDelManual(e.title))) return;
+        try { await api('DELETE', '/api/journal/events/' + e.id); toast(T.deleted); route(); } catch { /* shown */ }
+      } }, T.delete));
   };
   // days and months still ahead in this month or year: shown faint, not as empty bars to press
   const ahead = k => (per === 'month' && unit === 'day' && k > now.getDate()) || (per === 'year' && unit === 'month' && k > M);
@@ -1975,6 +2000,41 @@ async function viewJournal(q) {
         h('li', null, T.jBusiest(new Date(2024, 0, 1 + busiest).toLocaleDateString(T.locale, { weekday: 'long' }))),
         late > 0 && h('li', null, T.jLate(late))))));
 
+  // who and where: directors (a series' creators), cast and countries, from TMDB; a series counts once a day
+  const directors = count(genreBase, e => e.directors || []);
+  const cast = count(genreBase, e => e.cast || []);
+  const countries = count(genreBase, e => e.countries || []);
+  const regions = (() => { try { return new Intl.DisplayNames([T.locale], { type: 'region' }); } catch { return null; } })();
+  const country = c => { let n = c; try { n = regions?.of(c) || c; } catch { /* an old code */ } return jFlag(c) + ' ' + n; };
+  const rewatched = count(films, filmKey).filter(([, n]) => n > 1).map(([k, n]) => [films.find(e => filmKey(e) === k).title, n]);
+  const rated = films.filter(e => e.rating > 0);
+  const avg = rated.length ? rated.reduce((a, e) => a + e.rating, 0) / rated.length : 0;
+  if (directors.length || cast.length || countries.length || rewatched.length || rated.length) main.append(h('div.j-grid', null,
+    directors.length > 0 && h('section.j-sec', null, h('h2', null, T.jDirectors), barList(directors.slice(0, 6))),
+    cast.length > 0 && h('section.j-sec', null, h('h2', null, T.jCast), barList(cast.slice(0, 6))),
+    countries.length > 0 && h('section.j-sec', null, h('h2', null, T.jCountries), barList(countries.slice(0, 6).map(([c, n]) => [country(c), n]))),
+    rewatched.length > 0 && h('section.j-sec', null, h('h2', null, T.jRewatched), barList(rewatched.slice(0, 6))),
+    rated.length > 0 && h('section.j-sec', null, h('h2', null, T.jRated),
+      h('p', null, h('b.j-avg', null, '★ ' + num(avg, 1)), ' ', h('span.muted', null, T.jRatedOf(rated.length, films.length))),
+      h('ul.j-list.j-toprated', null, [...rated].sort((a, b) => b.rating - a.rating || b.at - a.at).slice(0, 5).map(e =>
+        h('li', null, h('span', null, e.title), h('span.j-starline', { 'aria-label': T.jStars(e.rating) }, '★'.repeat(e.rating)), h('span.muted', null, e.year || '')))))));
+
+  // a week of hours: when the viewings start, hour by hour
+  const grid = [...Array(7)].map(() => Array(24).fill(0));
+  for (const e of evs) { const d = new Date(e.at * 1000); grid[(d.getDay() + 6) % 7][d.getHours()]++; }
+  const gMax = Math.max(1, ...grid.flat());
+  main.append(h('section.j-sec', { 'aria-labelledby': 'j-hm' }, h('h2', { id: 'j-hm' }, T.jHeatmap),
+    h('div.scroll-x', null, h('table.j-heat', null,
+      h('thead', null, h('tr', null, h('th'), [...Array(24).keys()].map(hr => h('th', { scope: 'col' }, hr % 3 ? '' : String(hr))))),
+      h('tbody', null, grid.map((row, d) => h('tr', null, h('th', { scope: 'row' }, dayName(d)),
+        row.map((n, hr) => h('td', { title: `${dayName(d)} ${hr}:00 · ${T.jViewings(n)}`, 'aria-label': `${dayName(d)} ${hr}:00: ${T.jViewings(n)}` },
+          h('i', { style: { opacity: n ? 0.2 + 0.8 * n / gMax : 0 } }))))))))));
+
+  // records: the longest run of days, the biggest day and week, binge weekends
+  main.append(jRecords(evs));
+
+  main.append(...extras());
+
   // the year as a story: one big statement per page; click (or →, ←) to step, Esc to leave
   function openRecap() {
     const year = String(from.getFullYear());
@@ -2016,6 +2076,9 @@ async function viewJournal(q) {
       () => [kick(owl ? T.jrOwl : T.jWhen), h('p.jr-huge', null, T.jrAround(peak)),
         big(T.jrFavDay(new Date(2024, 0, 1 + busiest).toLocaleDateString(T.locale, { weekday: 'long' }))), late > 0 && h('p.jr-small', null, T.jLate(late))],
       decades.length && (() => [kick(T.jrDecade), h('p.jr-huge', null, decades[0][0]), big(T.jViewings(decades[0][1]))]),
+      directors.length && (() => [kick(T.jrDirector), h('p.jr-huge', null, directors[0][0]), big(T.jViewings(directors[0][1]))]),
+      rated.some(e => e.rating >= 4) && (() => [kick(T.jrBest), h('ol.jr-top', null, [...rated].sort((a, b) => b.rating - a.rating || b.at - a.at).slice(0, 5).map((e, i) =>
+        h('li' + (i ? '' : '.first'), null, h('span.jr-n', null, i + 1), jArt(e), h('div', null, h('b', null, e.title), h('span.muted', null, '★'.repeat(e.rating))))))]),
       () => [big(T.jrEnd), h('p.jr-actions', null, h('button.btn.primary', { onclick: () => show(0) }, '↺ ' + T.jrAgain), h('button.btn', { onclick: () => close() }, T.close))],
     ].filter(Boolean);
 
@@ -2062,6 +2125,274 @@ async function viewJournal(q) {
   }
 }
 
+// ---------------------------------------------------------------- Napló 2: stars, viewings by hand, goals, records, challenges
+const jCanEdit = () => { const p = state.me.profile; return !!p && !p.is_kids && !state.me.profile_locked; };
+
+// a viewing's poster: the library's artwork, the TMDB poster of one added by hand, or the title
+function jArt(e) {
+  if (e.image_id) return artImg({ id: e.image_id, kind: e.kind === 'episode' ? 'series' : 'movie', title: e.series_title || e.title, year: e.year, updated_at: e.updated_at }, 'poster', '');
+  if (e.poster) return h('div.art', null, h('img', { src: e.poster, alt: '', loading: 'lazy' }));
+  return h('div.art.noart', null, h('div.ph', null, e.series_title || e.title));
+}
+
+// a country's flag from its ISO 3166-1 code
+const jFlag = c => /^[A-Z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map(ch => 0x1F1A5 + ch.charCodeAt(0))) : '';
+
+// five stars; pressing the lit last one clears them. onSet resolves false when saving failed.
+function starPicker(value, onSet, label) {
+  const box = h('div.j-stars', { role: 'radiogroup', 'aria-label': label || T.jRate });
+  const draw = () => [...box.children].forEach((b, i) => { b.classList.toggle('on', i < value); b.setAttribute('aria-checked', String(i + 1 === value)); });
+  for (let i = 1; i <= 5; i++) box.append(h('button', { type: 'button', role: 'radio', 'aria-label': T.jStars(i), title: T.jStars(i),
+    onclick: async ev => { ev.preventDefault(); ev.stopPropagation(); const v = value === i ? 0 : i; if (await onSet(v) !== false) { value = v; draw(); } } }, '★'));
+  draw();
+  return box;
+}
+
+// a TMDB search field with a result list; pick(result) is called with the chosen one
+function jSearch(type, placeholder, row, pick) {
+  const input = h('input', { type: 'search', placeholder, 'aria-label': placeholder, autocomplete: 'off' });
+  const list = h('ul.j-results', { role: 'listbox' });
+  let timer = 0, seq = 0;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = input.value.trim(), my = ++seq;
+      if (q.length < 2) { list.replaceChildren(); return; }
+      let res = [];
+      try { res = await GET(`/api/journal/search?type=${type}&q=${encodeURIComponent(q)}`); } catch { return; }
+      if (my !== seq) return;
+      put(list, res.length ? res.slice(0, 12).map(x => h('li', null, h('button.j-result', { type: 'button', onclick: () => pick(x) }, row(x))))
+        : h('li.muted', null, T.jNoMatch));
+    }, 300);
+  });
+  return { input, list, el: h('div.j-search', null, input, list) };
+}
+
+const jResultRow = (img, title, sub) => [img ? h('img', { src: img, alt: '', loading: 'lazy' }) : h('span.j-noimg'), h('span', null, h('b', null, title), sub && h('span.muted', null, sub))];
+
+// a film seen outside Kinora: from TMDB, with the day and the stars
+function jAddViewing() {
+  let chosen = null, stars = 0;
+  const today = new Date(), iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const date = h('input', { type: 'date', value: iso(today), max: iso(today), 'aria-label': T.jAddWhen });
+  const picked = h('div.j-picked');
+  const search = jSearch('movie', T.jAddSearch, x => jResultRow(x.poster, x.title, x.year || ''), x => {
+    chosen = x;
+    put(picked, h('div.j-result.on', null, ...jResultRow(x.poster, x.title, x.year || '')));
+    search.list.replaceChildren();
+  });
+  const body = h('div.j-add', null, search.el, picked, field(T.jAddWhen, date), h('div.field', null, h('label', null, T.jRate), starPicker(0, v => { stars = v; }, T.jRate)),
+    h('p.muted.small', null, T.jAddHint));
+  modal(T.jAdd, body, close => [h('button.btn', { onclick: close }, T.cancel), h('button.btn.primary', { onclick: async () => {
+    if (!chosen) { toast(T.jAddPick, true); search.input.focus(); return; }
+    const [y, m, d] = date.value.split('-').map(Number);
+    const day = new Date(y, m - 1, d), isToday = iso(day) === iso(new Date());
+    const at = Math.floor((isToday ? Date.now() : new Date(y, m - 1, d, 20).getTime()) / 1000);
+    try { await api('POST', '/api/journal/events', { tmdb_id: chosen.id, at, rating: stars }); close(); toast(T.saved); route(); } catch { /* shown */ }
+  } }, T.save)]);
+}
+
+// more goals: films, hours, episodes or films of a genre, by month or year, with the pace they need
+function jGoals(goals, evs, per, canEdit) {
+  const box = h('section.j-sec.j-goals', { 'aria-label': T.jGoals });
+  const now = new Date();
+  const span = p => p === 'month' ? [new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth() + 1, 1)]
+    : [new Date(now.getFullYear(), 0, 1), new Date(now.getFullYear() + 1, 0, 1)];
+  const shown = goals.filter(g => per === 'year' || g.period === 'month');
+  const value = g => {
+    const [a, b] = span(g.period), list = evs.filter(e => e.at * 1000 >= a && e.at * 1000 < b);
+    if (g.metric === 'hours') return Math.floor(list.reduce((x, e) => x + (e.runtime_sec || 0), 0) / 3600);
+    if (g.metric === 'episodes') return list.filter(e => e.kind === 'episode').length;
+    const films = list.filter(e => e.kind === 'movie');
+    return g.metric === 'genre' ? films.filter(e => (e.genres || []).some(x => x.toLowerCase() === g.genre.toLowerCase())).length : films.length;
+  };
+  const rows = shown.map(g => {
+    const v = value(g), [a, b] = span(g.period), due = Math.floor(g.target * (now - a) / (b - a)), ahead = v - due;
+    const name = (g.period === 'month' ? T.jGoalNameMonth : T.jGoalNameYear)(g.metric === 'genre' ? T.jGoalGenreOf(g.genre) : T.jGoalMetric[g.metric]);
+    const pace = v >= g.target ? T.jGoalDone : ahead >= 0 ? T.jGoalPaceAhead(ahead) : T.jGoalPaceBehind(-ahead);
+    return h('div.j-goal', null, h('div.j-goal-head', null, h('span', null, h('b', null, name), ' · ', h('span.muted', null, pace)),
+        canEdit && h('button.btn.ghost.small', { type: 'button', 'aria-label': T.delete + ': ' + name, onclick: async () => {
+          if (!await confirmBox(T.jGoalDel(name))) return;
+          try { await api('DELETE', '/api/journal/goals/' + g.id); route(); } catch { /* shown */ }
+        } }, T.delete)),
+      h('div.j-goal-bar', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': g.target, 'aria-valuenow': Math.min(v, g.target), 'aria-label': name },
+        h('i', { style: { width: Math.min(100, v / g.target * 100) + '%' } }), h('u', { style: { left: Math.min(100, due / g.target * 100) + '%' } })),
+      h('p.small', null, `${num(v)} / ${num(g.target)} ${g.metric === 'hours' ? T.jUnitHours : g.metric === 'episodes' ? T.jUnitEps : T.jUnitFilms}`));
+  });
+  const add = canEdit && h('button.btn.ghost.small', { type: 'button', onclick: () => jGoalForm(evs) }, '＋ ' + T.jGoalAdd);
+  if (!rows.length && !add) return h('span');
+  box.append(...rows, add);
+  return box;
+}
+
+function jGoalForm(evs) {
+  const period = h('select', null, h('option', { value: 'month' }, T.jGoalPeriods.month), h('option', { value: 'year' }, T.jGoalPeriods.year));
+  const metric = h('select', null, Object.keys(T.jGoalMetric).map(k => h('option', { value: k }, T.jGoalMetric[k])), h('option', { value: 'genre' }, T.jGoalGenre));
+  const genres = [...new Set(evs.flatMap(e => e.genres || []))].sort((a, b) => a.localeCompare(b, T.locale));
+  const genre = h('input', { type: 'text', list: 'j-genres', maxlength: 80 });
+  const target = h('input', { type: 'number', min: 1, max: 10000, step: 1, value: 4 });
+  const gField = field(T.jGoalGenre, genre); gField.hidden = true;
+  metric.onchange = () => { gField.hidden = metric.value !== 'genre'; };
+  const body = h('div', null, field(T.jGoalPeriod, period), field(T.jGoalWhat, metric), gField, h('datalist', { id: 'j-genres' }, genres.map(g => h('option', { value: g }))), field(T.jGoalTarget, target));
+  modal(T.jGoalAdd, body, close => [h('button.btn', { onclick: close }, T.cancel), h('button.btn.primary', { onclick: async () => {
+    const t = Math.round(+target.value);
+    if (!(t >= 1 && t <= 10000)) { target.reportValidity(); return; }
+    if (metric.value === 'genre' && !genre.value.trim()) { genre.focus(); return; }
+    try {
+      // the yearly film goal is the profile's own (every device and the widgets show it), not a second one
+      if (period.value === 'year' && metric.value === 'films') {
+        if (t > 1000) { target.max = 1000; target.reportValidity(); return; }
+        const p = state.me.profile;
+        await api('PATCH', '/api/profiles/' + p.id, { journal_goal: t }); p.journal_goal = t;
+      } else await api('POST', '/api/journal/goals', { period: period.value, metric: metric.value, genre: genre.value.trim(), target: t });
+      close(); toast(T.saved); route();
+    } catch { /* shown */ }
+  } }, T.save)]);
+}
+
+// records of the period, in the viewer's own days
+function jRecords(evs) {
+  const dayKey = d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const perDay = new Map();
+  for (const e of evs) { const k = dayKey(new Date(e.at * 1000)); perDay.set(k, (perDay.get(k) || 0) + 1); }
+  // the longest run of days with at least one viewing
+  let best = 0, bestEnd = null, run = 0, prev = null;
+  const days = [...new Set(evs.map(e => { const d = new Date(e.at * 1000); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }))].sort((a, b) => a - b);
+  for (const t of days) {
+    const d = new Date(t);
+    run = prev && Math.round((d - prev) / 86400000) === 1 ? run + 1 : 1;
+    if (run > best) { best = run; bestEnd = d; }
+    prev = d;
+  }
+  // the biggest day
+  let top = null;
+  for (const e of evs) { const d = new Date(e.at * 1000), n = perDay.get(dayKey(d)); if (!top || n > top.n) top = { d, n }; }
+  // the biggest week (Monday to Sunday)
+  const weeks = new Map();
+  for (const e of evs) { const d = new Date(e.at * 1000); const m = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7); const k = m.getTime(); weeks.set(k, (weeks.get(k) || 0) + 1); }
+  const [wk, wn] = [...weeks].reduce((b, x) => x[1] > b[1] ? x : b, [0, 0]);
+  // binge weekends: 4 or more episodes of one series over a Saturday and Sunday
+  const binges = new Map();
+  for (const e of evs) {
+    if (e.kind !== 'episode') continue;
+    const d = new Date(e.at * 1000), wd = d.getDay();
+    if (wd !== 0 && wd !== 6) continue;
+    const sat = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (wd === 0 ? 1 : 0)).getTime(), k = sat + '|' + (e.series_title || e.title);
+    binges.set(k, (binges.get(k) || 0) + 1);
+  }
+  const bingeList = [...binges].filter(([, n]) => n >= 4).sort((a, b) => b[1] - a[1]);
+  const fmt = d => d.toLocaleDateString(T.locale, { year: 'numeric', month: 'short', day: 'numeric' });
+  const stat = (label, value, sub) => h('div.j-stat', null, h('dt', null, label), h('dd', null, h('b', null, value), sub && h('span.muted.small', null, sub)));
+  const startOf = bestEnd && new Date(bestEnd.getFullYear(), bestEnd.getMonth(), bestEnd.getDate() - best + 1);
+  return h('section.j-sec', { 'aria-labelledby': 'j-rec' }, h('h2', { id: 'j-rec' }, T.jRecords), h('dl.j-stats', null,
+    stat(T.jStreak, T.jDaysN(best), best > 1 ? `${fmt(startOf)} – ${fmt(bestEnd)}` : fmt(bestEnd)),
+    top && stat(T.jBigDay, T.jViewings(top.n), fmt(top.d)),
+    wn > 0 && stat(T.jBigWeek, T.jViewings(wn), T.jWeekOf(fmt(new Date(wk)))),
+    stat(T.jBinges, num(bingeList.length), bingeList.length ? T.jBingeTop(bingeList[0][0].split('|').slice(1).join('|'), bingeList[0][1]) : T.jBingeNone)));
+}
+
+// challenges: lists of titles to tick off, built from a director, an actor, a film series or by hand
+function jChallenges(list, canEdit) {
+  const box = h('section.j-sec', { 'aria-labelledby': 'j-ch' }, h('div.j-sec-head', null, h('h2', { id: 'j-ch' }, T.jChallenges),
+    canEdit && h('button.btn.ghost.small', { type: 'button', onclick: () => jChallengeForm() }, '＋ ' + T.jChNew)));
+  if (!list.length) { box.append(h('p.muted', null, T.jChEmpty)); return canEdit ? box : h('span'); }
+  for (const c of list) {
+    const pct = c.total ? Math.round(c.done / c.total * 100) : 0;
+    const posters = h('div.j-ch-grid', null, c.items.map(it => {
+      const art = it.poster ? h('div.art', null, h('img', { src: it.poster, alt: '', loading: 'lazy' })) : h('div.art.noart', null, h('div.ph', null, it.title));
+      if (it.watched) art.append(h('span.tick', { title: T.watched }, icon('check')));
+      const body = [art, h('div.cap', null, h('b', null, it.title), h('span', null, it.year || ''))];
+      return h('div.j-poster' + (it.watched ? '.seen' : ''), { 'aria-label': `${it.title}${it.year ? ' (' + it.year + ')' : ''}: ${it.watched ? T.watched : T.jChTodo}` },
+        it.item_id ? h('a.j-poster-link', { href: '#/item/' + it.item_id }, body) : h('div.j-poster-link', null, body),
+        canEdit && h('button.btn.ghost.small.j-del', { type: 'button', 'aria-label': T.jChRemove + ': ' + it.title, onclick: async () => {
+          try { await api('DELETE', `/api/journal/challenges/${c.id}/items/${it.kind}/${it.tmdb_id}`); route(); } catch { /* shown */ }
+        } }, '✕'));
+    }));
+    const tools = canEdit && h('div.j-ch-tools', null,
+      h('button.btn.ghost.small', { type: 'button', onclick: () => jChallengeAddTitles(c) }, '＋ ' + T.jChAddTitles),
+      h('button.btn.ghost.small', { type: 'button', onclick: () => {
+        const name = h('input', { type: 'text', maxlength: 120, value: c.title, required: true });
+        modal(T.edit, h('div.j-add', null, field(T.jChName, name)), close => [h('button.btn', { onclick: close }, T.cancel), h('button.btn.primary', { onclick: async () => {
+          const t = name.value.trim();
+          if (!t) { name.reportValidity(); return; }
+          try { await api('PATCH', '/api/journal/challenges/' + c.id, { title: t }); close(); route(); } catch { /* shown */ }
+        } }, T.save)]);
+        name.focus();
+      } }, T.edit),
+      h('button.btn.ghost.small', { type: 'button', onclick: async () => {
+        if (!await confirmBox(T.jChDel(c.title))) return;
+        try { await api('DELETE', '/api/journal/challenges/' + c.id); route(); } catch { /* shown */ }
+      } }, T.delete));
+    box.append(h('details.j-ch', { open: (c.total === 0 || c.done < c.total) && list.length <= 3 },
+      h('summary', null, h('b', null, c.title), h('span.muted', null, ` · ${T.jChProgress(c.done, c.total)}`), c.total > 0 && c.done >= c.total && h('span.j-ch-done', null, ' ✓'),
+        h('span.j-goal-bar', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': c.total, 'aria-valuenow': c.done, 'aria-label': c.title }, h('i', { style: { width: pct + '%' } }))),
+      c.items.length ? posters : h('p.muted', null, T.jChNoTitles), tools));
+  }
+  return box;
+}
+
+function jChallengeForm() {
+  const name = h('input', { type: 'text', maxlength: 120, placeholder: T.jChNameHint });
+  let src = 'directing', pickedSrc = null;
+  const kinds = { directing: T.jChFromDirector, acting: T.jChFromActor, collection: T.jChFromCollection, own: T.jChFromOwn };
+  const slot = h('div');
+  const picked = h('div.j-picked');
+  const draw = () => {
+    pickedSrc = null; picked.replaceChildren();
+    if (src === 'own') { put(slot, h('p.muted.small', null, T.jChOwnHint)); return; }
+    const type = src === 'collection' ? 'collection' : 'person';
+    const s = jSearch(type, src === 'collection' ? T.jChSearchCollection : T.jChSearchPerson,
+      x => type === 'person' ? jResultRow(x.photo, x.name, x.known_for || '') : jResultRow(x.poster, x.name, ''),
+      x => { pickedSrc = x; put(picked, h('div.j-result.on', null, ...(type === 'person' ? jResultRow(x.photo, x.name, x.known_for || '') : jResultRow(x.poster, x.name, '')))); s.list.replaceChildren(); if (!name.value.trim()) name.placeholder = x.name; });
+    put(slot, s.el);
+  };
+  const tabs = h('nav.chips', { 'aria-label': T.jChFrom }, Object.entries(kinds).map(([k, l]) => h('button.chip' + (k === src ? '.on' : ''), { type: 'button', onclick: e => {
+    src = k; for (const b of tabs.children) b.classList.toggle('on', b === e.currentTarget); draw();
+  } }, l)));
+  draw();
+  modal(T.jChNew, h('div.j-add', null, h('p.small', null, T.jChFrom), tabs, slot, picked, field(T.jChName, name)), close => [h('button.btn', { onclick: close }, T.cancel), h('button.btn.primary', { onclick: async () => {
+    const body = { title: name.value.trim() };
+    if (src !== 'own') {
+      if (!pickedSrc) { toast(T.jChPick, true); return; }
+      if (src === 'collection') body.collection_id = pickedSrc.id; else { body.person_id = pickedSrc.id; body.role = src; }
+    } else if (!body.title) { name.focus(); return; }
+    try { await api('POST', '/api/journal/challenges', body); close(); toast(T.saved); route(); } catch { /* shown */ }
+  } }, T.save)]);
+}
+
+function jChallengeAddTitles(c) {
+  let kind = 'movie';
+  const slot = h('div');
+  const added = h('p.muted.small');
+  let n = 0;
+  const draw = () => {
+    const s = jSearch(kind, T.jChSearchTitle, x => jResultRow(x.poster, x.title, x.year || ''), async x => {
+      try {
+        await api('POST', `/api/journal/challenges/${c.id}/items`, { items: [{ kind, tmdb_id: x.id, title: x.title, year: x.year || 0, poster: x.poster || '' }] });
+        n++; added.textContent = T.jChAdded(n, x.title);
+      } catch { /* shown */ }
+    });
+    put(slot, s.el);
+  };
+  const tabs = h('nav.chips', null, [['movie', T.jMovies], ['series', T.jSeries]].map(([k, l]) => h('button.chip' + (k === kind ? '.on' : ''), { type: 'button', onclick: e => {
+    kind = k; for (const b of tabs.children) b.classList.toggle('on', b === e.currentTarget); draw();
+  } }, l)));
+  draw();
+  modal(T.jChAddTitles + ': ' + c.title, h('div.j-add', null, tabs, slot, added), close => [h('button.btn.primary', { onclick: close }, T.done)], () => { if (n) route(); });
+}
+
+// started and left before a fifth of the runtime, untouched for two weeks
+function jAbandoned(items) {
+  if (!items.length) return h('span');
+  return h('section.j-sec', { 'aria-labelledby': 'j-ab' }, h('h2', { id: 'j-ab' }, T.jAbandoned), h('p.muted.small', null, T.jAbandonedHint),
+    h('div.j-posters', null, items.map(it => {
+      const wrap = h('div.j-ab', null, card(it, 'poster'), h('button.btn.ghost.small', { type: 'button', onclick: async () => {
+        try { await api('POST', `/api/journal/abandoned/${it.id}/hide`); wrap.remove(); } catch { /* shown */ }
+      } }, T.jAbandonedHide));
+      return wrap;
+    })));
+}
+
 // ===================================================================== account
 async function viewAccount() {
   const main = shell('account');
@@ -2080,6 +2411,7 @@ async function viewAccount() {
 // saved on the profile, so every device shows the same goal
 function goalBlock(films) {
   const p = state.me.profile, goal = p?.journal_goal || 0;
+  if (!goal) return h('span'); // a new one is set from the goals' own "New goal" button
   const canEdit = p && !p.is_kids && !state.me.profile_locked;
   const box = h('section.j-goal', { 'aria-label': T.jGoal });
   const edit = () => {
@@ -2096,7 +2428,6 @@ function goalBlock(films) {
     input.focus();
   };
   const show = () => {
-    if (!goal) return canEdit ? [h('button.btn.ghost.small', { type: 'button', onclick: edit }, '＋ ' + T.jGoalSet)] : [];
     const now = new Date(), y0 = new Date(now.getFullYear(), 0, 1), y1 = new Date(now.getFullYear() + 1, 0, 1);
     const due = Math.floor(goal * (now - y0) / (y1 - y0)), ahead = films - due;
     const pace = films >= goal ? T.jGoalDone : ahead >= 0 ? T.jGoalAhead(ahead) : T.jGoalBehind(-ahead);
