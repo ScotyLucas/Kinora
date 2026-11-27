@@ -47,3 +47,25 @@ func (s *Server) handleDiscoverScores(kind string) func(http.ResponseWriter, *ht
 		writeJSON(w, http.StatusOK, s.Meta.TitleScores(ctx, kind, id, ""))
 	}
 }
+
+// handleDiscoverTrailer: the YouTube trailer of a film or series in the Felfedezés ({"key": ""} when none).
+func (s *Server) handleDiscoverTrailer(kind string) func(http.ResponseWriter, *http.Request, *reqCtx) {
+	return func(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+		if s.acqUser(w, c) == nil {
+			return
+		}
+		id := pathID(r, "id")
+		if id <= 0 {
+			writeErr(w, http.StatusBadRequest, "hibás azonosító")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), scoresTimeout)
+		defer cancel()
+		t, err := s.Meta.TitleTrailer(viewCtx(r.WithContext(ctx), c), kind, id)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, t)
+	}
+}

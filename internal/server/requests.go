@@ -111,6 +111,7 @@ func (s *Server) handleDiscoverBrowse(w http.ResponseWriter, r *http.Request, c 
 	b.YearTo, _ = strconv.Atoi(q.Get("to"))
 	b.MinRating, _ = strconv.ParseFloat(q.Get("rating"), 64)
 	b.Page, _ = strconv.Atoi(q.Get("page"))
+	b.Country, b.NoCountry = strings.CutPrefix(q.Get("country"), "!") // "!HU": everything but Hungarian titles
 	switch b.Sort {
 	case "", "popular", "new", "top":
 	default:

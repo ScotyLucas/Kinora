@@ -1625,3 +1625,6 @@ a.j-poster-link:hover .art, a.j-poster-link:focus-visible .art { border-color: v
 .month-recap .mr-x { background: none; border: 0; color: var(--t2); font-size: var(--f2); padding: var(--s2); cursor: pointer; }
 .month-recap .mr-x:hover, .month-recap .mr-x:focus-visible { color: var(--t0); }
 @media (max-width: 600px) { .month-recap { flex-wrap: wrap; } .month-recap .mr-body { flex-basis: calc(100% - 3em); } }
+.disc-trailer { margin: var(--s3) 0; }
+.disc-trailer-frame { position: relative; aspect-ratio: 16 / 9; width: 100%; border-radius: var(--r2, 8px); overflow: hidden; background: #000; }
+.disc-trailer-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }

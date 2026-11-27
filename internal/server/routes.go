@@ -213,6 +213,8 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/discover/movies/{id}", s.withProfile(s.handleDiscoverMovie))
 	m.HandleFunc("GET /api/discover/movies/{id}/scores", s.withProfile(s.handleDiscoverScores("movie")))
 	m.HandleFunc("GET /api/discover/series/{id}/scores", s.withProfile(s.handleDiscoverScores("series")))
+	m.HandleFunc("GET /api/discover/movies/{id}/trailer", s.withProfile(s.handleDiscoverTrailer("movie")))
+	m.HandleFunc("GET /api/discover/series/{id}/trailer", s.withProfile(s.handleDiscoverTrailer("series")))
 	m.HandleFunc("GET /api/discover/series/{id}", s.withProfile(s.handleDiscoverSeries))
 	m.HandleFunc("POST /api/requests", s.withProfile(s.handleRequestCreate))
 	m.HandleFunc("GET /api/requests", s.withProfile(s.handleRequestsMine))

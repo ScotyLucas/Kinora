@@ -5,6 +5,16 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Új (web):** ország szerinti szűrés a Felfedezésben. Az „Ország” menüben választhatsz egy származási országot
+  („Csak innen”), vagy kizárhatsz egyet („Kivéve”). Ha egy országot kizársz, a több ország közös gyártásai közül azok még
+  megjelennek, amelyeknek van másik származási országuk is.
+- **New (web):** filter the Felfedezés (Discover) by country. The "Country" menu keeps only the titles from one
+  country of origin ("Only from") or leaves one out ("Except"). When you leave a country out, co-productions still
+  show if they also have another country of origin.
+- **Új (web):** előzetes a Felfedezésben. Egy film vagy sorozat lapján az „Előzetes” gombbal ott helyben elindul a
+  YouTube-előzetes (a TMDB adatai alapján, elsőként a metaadat nyelvén). Ha a címnek nincs előzetese, a gomb nem jelenik meg.
+- **New (web):** trailers in the Felfedezés (Discover). On a film or series page the "Trailer" button plays its YouTube
+  trailer in place (from TMDB, in the metadata language first). The button does not show when a title has none.
 - **Új:** linkelőnézet. A szerver Open Graph-címkéket ad a megosztott linkekhez; ezekből mutat címet és képet például az
   iMessage, a WhatsApp vagy a Discord – ha a szerver az internetről elérhető. A watch party linkje (`/party/KÓD`) a film vagy epizód címét és borítóját mutatja, amíg a party
   tart; a meghívó linkje (`/join/KÓD`) a szerver nevét, a meghívó megjegyzését nem. Minden más link a szerver nevét és

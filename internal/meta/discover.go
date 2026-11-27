@@ -3,6 +3,7 @@ package meta
 import (
 	"context"
 	"errors"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,6 +36,8 @@ type BrowseFilter struct {
 	YearTo    int
 	MinRating float64 // TMDB vote average
 	Lang      string  // original language, ISO 639-1 ("hu")
+	Country   string  // country of origin, ISO 3166-1 ("HU")
+	NoCountry bool    // leave Country out instead of keeping only it
 	Page      int
 }
 
@@ -221,6 +224,20 @@ func (f *Fetcher) Browse(ctx context.Context, b BrowseFilter) (BrowsePage, error
 	if len(b.Lang) == 2 {
 		set("with_original_language", strings.ToLower(b.Lang))
 	}
+	if c := strings.ToUpper(b.Country); len(c) == 2 {
+		if b.NoCountry {
+			// TMDB has no without_origin_country: ask for every other country instead (| means "any of").
+			others := make([]string, 0, len(isoCountries))
+			for _, o := range isoCountries {
+				if o != c {
+					others = append(others, o)
+				}
+			}
+			set("with_origin_country", strings.Join(others, "|"))
+		} else {
+			set("with_origin_country", c)
+		}
+	}
 	page := b.Page
 	if page < 1 {
 		page = 1
@@ -290,4 +307,59 @@ func (f *Fetcher) TitleProviders(ctx context.Context, kind string, id int64) (Wh
 	}
 	w.Stream, w.Rent, w.Buy = list(c.Flatrate, c.Free, c.Ads), list(c.Rent), list(c.Buy)
 	return w, nil
+}
+
+// isoCountries: ISO 3166-1 codes, plus the former countries TMDB still uses for old titles (SU, CS, XC, XG, YU).
+var isoCountries = strings.Fields(`AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW SU CS XC XG YU`)
+
+// Trailer is a title's YouTube trailer; Key is the YouTube video id ("" when TMDB knows none).
+type Trailer struct {
+	Key  string `json:"key"`
+	Name string `json:"name,omitempty"`
+}
+
+// TitleTrailer picks a YouTube trailer for a film or series: one in the metadata language first, then
+// English; official trailers before teasers and fan uploads.
+func (f *Fetcher) TitleTrailer(ctx context.Context, kind string, id int64) (Trailer, error) {
+	lang := f.lang(ctx)
+	short := strings.ToLower(strings.SplitN(lang, "-", 2)[0])
+	var r struct {
+		Results []struct {
+			Key      string `json:"key"`
+			Name     string `json:"name"`
+			Site     string `json:"site"`
+			Type     string `json:"type"`
+			Official bool   `json:"official"`
+			Lang     string `json:"iso_639_1"`
+		} `json:"results"`
+	}
+	q := url.Values{"include_video_language": {short + ",en,null"}}
+	if err := f.get(ctx, "/"+tmdbKind(kind)+"/"+strconv.FormatInt(id, 10)+"/videos", q, &r); err != nil {
+		return Trailer{}, err
+	}
+	best, score := Trailer{}, -1
+	for _, v := range r.Results {
+		if v.Site != "YouTube" || v.Key == "" {
+			continue
+		}
+		s := 0
+		switch v.Type {
+		case "Trailer":
+			s += 4
+		case "Teaser":
+			s += 2
+		default:
+			continue
+		}
+		if v.Official {
+			s++
+		}
+		if v.Lang == short {
+			s += 8
+		}
+		if s > score {
+			best, score = Trailer{Key: v.Key, Name: v.Name}, s
+		}
+	}
+	return best, nil
 }

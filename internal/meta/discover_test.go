@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -72,18 +73,40 @@ func TestBrowseProvidersWhereToWatch(t *testing.T) {
 		t.Errorf("provider list not cached: %d calls", provHits.Load())
 	}
 
-	p, err := f.Browse(ctx, BrowseFilter{Kind: "series", Providers: []int{8, 1899, 0}, Genres: []int{18}, Sort: "top", YearFrom: 2010, YearTo: 2019, MinRating: 7.5, Lang: "HU", Page: 2})
+	p, err := f.Browse(ctx, BrowseFilter{Kind: "series", Providers: []int{8, 1899, 0}, Genres: []int{18}, Sort: "top", YearFrom: 2010, YearTo: 2019, MinRating: 7.5, Lang: "HU", Country: "hu", Page: 2})
 	if err != nil || len(p.Results) != 1 || p.Results[0].Title != "Trónok harca" || p.Results[0].Year != 2011 || p.Results[0].Poster != "https://img/w342/got.jpg" ||
 		p.TotalPages != 500 || p.Total != 18000 {
 		t.Fatalf("browse: %v %+v", err, p)
 	}
 	for k, want := range map[string]string{"with_watch_providers": "8|1899", "watch_region": "HU", "with_watch_monetization_types": "flatrate|free|ads",
 		"with_genres": "18", "sort_by": "vote_average.desc", "vote_count.gte": "300", "first_air_date.gte": "2010-01-01",
-		"first_air_date.lte": "2019-12-31", "vote_average.gte": "7.5", "with_original_language": "hu", "page": "2", "include_adult": "false"} {
+		"first_air_date.lte": "2019-12-31", "vote_average.gte": "7.5", "with_original_language": "hu", "with_origin_country": "HU", "page": "2", "include_adult": "false"} {
 		if got := last.Get(k); got != want {
 			t.Errorf("browse %s = %q, want %q", k, got, want)
 		}
 	}
+	if _, err := f.Browse(ctx, BrowseFilter{Kind: "series", Country: "HU", NoCountry: true}); err != nil {
+		t.Fatal(err)
+	}
+	if oc := "|" + last.Get("with_origin_country") + "|"; strings.Contains(oc, "|HU|") || !strings.Contains(oc, "|US|") || !strings.Contains(oc, "|SU|") {
+		t.Errorf("excluding a country: %q", oc)
+	}
+
+	mux.HandleFunc("/3/tv/1399/videos", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("include_video_language") != "hu,en,null" {
+			t.Errorf("trailer languages: %q", r.URL.RawQuery)
+		}
+		j(w, map[string]any{"results": []map[string]any{
+			{"key": "clip", "site": "YouTube", "type": "Clip", "iso_639_1": "hu"},
+			{"key": "vimeo", "site": "Vimeo", "type": "Trailer", "iso_639_1": "hu", "official": true},
+			{"key": "en1", "site": "YouTube", "type": "Trailer", "iso_639_1": "en", "official": true},
+			{"key": "hu1", "site": "YouTube", "type": "Teaser", "iso_639_1": "hu"},
+		}})
+	})
+	if tr, err := f.TitleTrailer(ctx, "series", 1399); err != nil || tr.Key != "hu1" {
+		t.Errorf("trailer: %v %+v", err, tr)
+	}
+
 	if _, err := f.Browse(ctx, BrowseFilter{Sort: "random"}); err == nil {
 		t.Error("unknown sort accepted")
 	}

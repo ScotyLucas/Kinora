@@ -4911,6 +4911,20 @@ function watchBlock(w, kind, close) {
     h('p.muted.small.disc-jw', null, w.link ? h('a', { href: w.link, target: '_blank', rel: 'noopener noreferrer' }, T.discJustWatch) : T.discJustWatch));
 }
 
+// the YouTube trailer (TMDB): a button that turns into the embedded player; stays hidden when there is none
+function trailerSlot(kind, id) {
+  const slot = h('div.disc-trailer', { hidden: true });
+  GET(`/api/discover/${kind}/${id}/trailer`).then(t => {
+    if (!t || !t.key) return;
+    const play = h('button.btn', { onclick: () => put(slot, h('div.disc-trailer-frame', null, h('iframe', {
+      src: 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(t.key) + '?autoplay=1&rel=0&hl=' + encodeURIComponent(T.locale),
+      title: t.name || T.discTrailer, allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
+      referrerpolicy: 'strict-origin-when-cross-origin' }))) }, icon('play'), T.discTrailer);
+    put(slot, play); slot.hidden = false;
+  }).catch(() => {});
+  return slot;
+}
+
 async function discoverDialog(id, onChange) {
   const d = await GET('/api/discover/movies/' + id);
   const r = d.request;
@@ -4929,7 +4943,7 @@ async function discoverDialog(id, onChange) {
   modal(d.title + (d.year ? ' (' + d.year + ')' : ''), h('div.disc-detail', null,
     d.poster && h('img.acq-mposter', { src: d.poster, alt: '' }),
     h('div.acq-mbody', null, d.original_title && d.original_title !== d.title && h('p.muted.small', null, d.original_title),
-      facts && h('p.muted', null, facts), scores, seenBlock(d.watched), d.overview && h('p.acq-overview', null, d.overview), box, state_, lc && lc.el,
+      facts && h('p.muted', null, facts), scores, seenBlock(d.watched), trailerSlot('movies', d.id), d.overview && h('p.acq-overview', null, d.overview), box, state_, lc && lc.el,
       watchBlock(d.watch, 'movie', () => shut()))),
   close => (shut = close, [
     h('button.btn', { onclick: close }, T.close),
@@ -4954,21 +4968,22 @@ const DISC_YEARS = () => {
 // the services the Felfedezés offers as filters, by their TMDB names (ads tiers and channels left out)
 const BIG_PROVIDERS = [[/^netflix$/i, 'Netflix'], [/^(hbo )?max$/i, 'HBO Max'], [/^disney\s*(\+|plus)$/i, 'Disney+'], [/^amazon prime video$|^prime video$/i, 'Prime Video']];
 const DISC_LANGS = ['hu', 'en', 'fr', 'de', 'es', 'it', 'da', 'sv', 'ko', 'ja'];
+const DISC_COUNTRIES = ['HU', 'US', 'GB', 'FR', 'DE', 'ES', 'IT', 'DK', 'SE', 'NO', 'PL', 'TR', 'IN', 'KR', 'JP', 'CN', 'CA', 'AU', 'BR', 'MX'];
 const isoName = (code, type) => { try { return new Intl.DisplayNames([T.locale], { type }).of(code); } catch { return code.toUpperCase(); } };
 
 async function viewDiscover(q) {
   if (!state.me.can_request) return go('#/home');
   const main = shell('discover');
   const f = { q: q.get('q') || '', kind: q.get('kind') === 'series' ? 'series' : 'movie', p: new Set((q.get('p') || '').split(',').filter(Boolean)),
-    g: q.get('g') || '', sort: q.get('sort') || '', y: q.get('y') || '', r: q.get('r') || '', lang: q.get('lang') || '', fresh: q.get('new') === '1' };
-  const filtered = () => f.p.size > 0 || f.g || f.sort || f.y || f.r || f.lang;
-  const nFilters = () => f.p.size + ['g', 'sort', 'y', 'r', 'lang'].filter(k => f[k]).length;
+    g: q.get('g') || '', sort: q.get('sort') || '', y: q.get('y') || '', r: q.get('r') || '', lang: q.get('lang') || '', c: q.get('c') || '', fresh: q.get('new') === '1' };
+  const filtered = () => f.p.size > 0 || f.g || f.sort || f.y || f.r || f.lang || f.c;
+  const nFilters = () => f.p.size + ['g', 'sort', 'y', 'r', 'lang', 'c'].filter(k => f[k]).length;
   const url = () => {
     const p = new URLSearchParams();
     if (f.q) p.set('q', f.q);
     if (f.kind === 'series') p.set('kind', 'series');
     if (f.p.size) p.set('p', [...f.p].join(','));
-    ['g', 'sort', 'y', 'r', 'lang'].forEach(k => f[k] && p.set(k, f[k]));
+    ['g', 'sort', 'y', 'r', 'lang', 'c'].forEach(k => f[k] && p.set(k, f[k]));
     if (f.fresh) p.set('new', '1');
     const s = String(p);
     return '#/discover' + (s ? '?' + s : '');
@@ -4987,6 +5002,11 @@ async function viewDiscover(q) {
   const yearSel = h('select', { 'aria-label': T.year }, DISC_YEARS().map(([v, l]) => h('option', { value: v, selected: f.y === v }, l)));
   const rateSel = h('select', { 'aria-label': T.minRating }, [['', T.discAnyRating], ['6', '★ 6+'], ['7', '★ 7+'], ['8', '★ 8+']].map(([v, l]) => h('option', { value: v, selected: f.r === v }, l)));
   const langSel = h('select', { 'aria-label': T.discLang }, h('option', { value: '' }, T.discAnyLang), DISC_LANGS.map(c => h('option', { value: c, selected: f.lang === c }, isoName(c, 'language'))));
+  // country of origin: "HU" keeps only Hungarian titles, "!HU" leaves them out
+  const byName = DISC_COUNTRIES.map(c => [c, isoName(c, 'region')]).sort((a, b) => (a[0] === 'HU' ? -1 : b[0] === 'HU' ? 1 : a[1].localeCompare(b[1])));
+  const countrySel = h('select', { 'aria-label': T.discCountry }, h('option', { value: '' }, T.discAnyCountry),
+    h('optgroup', { label: T.discCountryOnly }, byName.map(([c, n]) => h('option', { value: c, selected: f.c === c }, n))),
+    h('optgroup', { label: T.discCountryNot }, byName.map(([c, n]) => h('option', { value: '!' + c, selected: f.c === '!' + c }, T.discNotIn(n)))));
   const fresh = h('button.fchip', { type: 'button', 'aria-pressed': String(f.fresh) });
   const clearBtn = h('button.disc-clear', { type: 'button' }, icon('x'), T.clear);
   const provBox = h('div.menu-pop.disc-spop', { role: 'group', 'aria-label': T.discServices, hidden: true });
@@ -5029,7 +5049,7 @@ async function viewDiscover(q) {
   };
   const paintBar = () => {
     paintKind(); paintSelects(); paintProv(); clearBtn.style.display = filtered() || f.fresh ? '' : 'none';
-    [genreSel, yearSel, rateSel, langSel].forEach(s => s.classList.toggle('on', !!s.value));
+    [genreSel, yearSel, rateSel, langSel, countrySel].forEach(s => s.classList.toggle('on', !!s.value));
     fresh.setAttribute('aria-pressed', String(f.fresh)); fresh.classList.toggle('on', f.fresh);
     put(fresh, f.fresh ? icon('check') : null, T.discOnlyNew);
     const n = nFilters() + (f.fresh ? 1 : 0);
@@ -5041,10 +5061,11 @@ async function viewDiscover(q) {
   yearSel.addEventListener('change', () => { f.y = yearSel.value; changed(); });
   rateSel.addEventListener('change', () => { f.r = rateSel.value; changed(); });
   langSel.addEventListener('change', () => { f.lang = langSel.value; changed(); });
+  countrySel.addEventListener('change', () => { f.c = countrySel.value; changed(); });
   fresh.addEventListener('click', () => { f.fresh = !f.fresh; changed(); });
   clearBtn.addEventListener('click', () => {
-    f.p.clear(); f.g = f.sort = f.y = f.r = f.lang = ''; f.fresh = false;
-    yearSel.value = rateSel.value = langSel.value = '';
+    f.p.clear(); f.g = f.sort = f.y = f.r = f.lang = f.c = ''; f.fresh = false;
+    yearSel.value = rateSel.value = langSel.value = countrySel.value = '';
     changed();
   });
   input.addEventListener('input', debounce(() => { f.q = input.value.trim(); changed(); }, 350));
@@ -5054,7 +5075,7 @@ async function viewDiscover(q) {
     h('div.disc-bar', null,
       searchField(input, 'disc-search'),
       h('div.disc-view', null, kindTabs, h('div.disc-view-r', null, filtersBtn, sortCtl)),
-      add(moreFilters, [provMenu, genreSel, yearSel, rateSel, langSel, fresh, clearBtn])),
+      add(moreFilters, [provMenu, genreSel, yearSel, rateSel, langSel, countrySel, fresh, clearBtn])),
     body, sentinel);
 
   // ---- results
@@ -5075,6 +5096,7 @@ async function viewDiscover(q) {
     if (yr && yr[3]) p.set('to', yr[3]);
     if (f.r) p.set('rating', f.r);
     if (f.lang) p.set('lang', f.lang);
+    if (f.c) p.set('country', f.c);
     p.set('page', extra.page || 1);
     return '/api/discover/browse?' + p;
   };
@@ -5286,7 +5308,7 @@ async function seriesDialog(id, onChange) {
   modal(d.title + (d.year ? ' (' + d.year + ')' : ''), h('div.disc-detail', null,
     d.poster && h('img.acq-mposter', { src: d.poster, alt: '' }),
     h('div.acq-mbody', null, d.original_title && d.original_title !== d.title && h('p.muted.small', null, d.original_title),
-      h('p.muted', null, facts), scores, seenBlock(d.watched, d.seasons), d.overview && h('p.acq-overview', null, d.overview), status,
+      h('p.muted', null, facts), scores, seenBlock(d.watched, d.seasons), trailerSlot('series', d.id), d.overview && h('p.acq-overview', null, d.overview), status,
       watchBlock(d.watch, 'series', () => shut()),
       !r && d.seasons.length > 0 && picker.el, lc && lc.el)),
   close => (shut = close, [
