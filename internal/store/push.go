@@ -121,6 +121,63 @@ func (s *Store) DeletePushIOS(deviceID string) (string, error) {
 	return h, err
 }
 
+// InboxPrefix starts the handle of a device that fetches its notifications itself (the Android app):
+// the relay never sees it, the messages wait in push_inbox.
+const InboxPrefix = "inbox:"
+
+// Inbox reports whether the device fetches its notifications instead of getting them through the relay.
+func (p PushIOS) Inbox() bool { return strings.HasPrefix(p.Handle, InboxPrefix) }
+
+// maxInbox is how many notifications wait for one device; older ones are dropped.
+const maxInbox = 50
+
+// AddPushInbox keeps a notification for a device that fetches them, dropping the oldest past maxInbox.
+func (s *Store) AddPushInbox(deviceID string, body []byte) error {
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO push_inbox(device_id,body,created_at) VALUES(?,?,?)`, deviceID, string(body), now()); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM push_inbox WHERE device_id=? AND id NOT IN
+ (SELECT id FROM push_inbox WHERE device_id=? ORDER BY id DESC LIMIT ?)`, deviceID, deviceID, maxInbox); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// TakePushInbox returns the device's waiting notifications, oldest first, and forgets them.
+func (s *Store) TakePushInbox(deviceID string) ([]string, error) {
+	rows, err := s.DB.Query(`DELETE FROM push_inbox WHERE device_id=? RETURNING id, body`, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type msg struct {
+		id   int64
+		body string
+	}
+	var got []msg
+	for rows.Next() {
+		var m msg
+		if err := rows.Scan(&m.id, &m.body); err != nil {
+			return nil, err
+		}
+		got = append(got, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(got, func(a, b msg) int { return int(a.id - b.id) })
+	out := make([]string, len(got))
+	for i, m := range got {
+		out[i] = m.body
+	}
+	return out, nil
+}
+
 // CountPushIOS is the number of paired iOS devices.
 func (s *Store) CountPushIOS() int {
 	var n int

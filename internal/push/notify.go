@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -58,7 +59,8 @@ type LiveState struct {
 // {0}, {1}… filled from args.
 type Translator func(lang string) func(hu string, args ...any) string
 
-// Notifier pushes request changes, new episodes and live downloads to paired iOS devices.
+// Notifier pushes request changes, new episodes and live downloads to paired iOS devices (through the
+// relay) and keeps them for paired Android devices, which fetch them.
 type Notifier struct {
 	st       *store.Store
 	Relay    *Relay
@@ -107,18 +109,17 @@ func (n *Notifier) text(lang string) func(string, ...any) string {
 
 // Tick sends what is waiting now.
 func (n *Notifier) Tick(ctx context.Context) {
-	if !n.Relay.Enabled() {
-		// nobody to tell: drop what piled up, so turning push on later does not flood
-		n.st.ClearPushEvents()
-		n.skipEpisodes()
-		return
-	}
 	devs, err := n.st.PushIOSAll()
 	if err != nil {
 		n.log.Warn("push: devices", "err", err)
 		return
 	}
+	if !n.Relay.Enabled() {
+		// without the relay only the devices that fetch their notifications (Android) can be told
+		devs = slices.DeleteFunc(devs, func(d store.PushIOS) bool { return !d.Inbox() })
+	}
 	if len(devs) == 0 {
+		// nobody to tell: drop what piled up, so turning push on later does not flood
 		n.st.ClearPushEvents()
 		n.skipEpisodes()
 		return
@@ -494,7 +495,7 @@ func (n *Notifier) live(ctx context.Context, devs []store.PushIOS) {
 			if ctx.Err() != nil {
 				return
 			}
-			if !d.Live || d.UserID != *dl.Request.UserID {
+			if !d.Live || d.Inbox() || d.UserID != *dl.Request.UserID {
 				continue
 			}
 			k := key{d.DeviceID, dl.Request.ID}
@@ -635,6 +636,10 @@ func (n *Notifier) SendDevice(ctx context.Context, d store.PushIOS, m Message) e
 	plain, err := encode(m)
 	if err != nil {
 		return err
+	}
+	if d.Inbox() {
+		// the Android app fetches it (GET /api/push/android/inbox); nothing to seal, it stays on this server
+		return n.st.AddPushInbox(d.DeviceID, plain)
 	}
 	sealed, err := Seal(d.Key, plain)
 	if err != nil {

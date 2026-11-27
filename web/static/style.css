@@ -836,6 +836,12 @@ label.switch-row > span { color: var(--t0); }
 .p-btn:hover { background: rgb(var(--t0-rgb) / .1); color: var(--t0); }
 .p-btn svg { width: var(--i-xl); height: var(--i-xl); }
 .p-btn.on { color: var(--amber); }
+/* casting: the picture is on the Chromecast, the middle of the player says where */
+.cast-note { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 999px; background: rgb(var(--scrim) / .75); color: var(--t0); }
+.cast-note:empty { display: none; }
+.cast-note svg { width: 22px; height: 22px; color: var(--amber); }
+/* the Android app's picture-in-picture: only the picture (and its subtitles) */
+.app-pip .player .ui, .app-pip .player .p-pop, .app-pip .player .upnext, .app-pip .player .skip-seg, .app-pip .player .party, .app-pip #toasts { display: none !important; }
 /* play/pause: the one lit key, amber like Play everywhere else */
 .p-btn.p-main { width: calc(var(--hit) + var(--s4)); height: calc(var(--hit) + var(--s4)); background: var(--amber); color: var(--amber-ink); }
 .p-btn.p-main:hover { background: var(--amber); color: var(--amber-ink); filter: brightness(1.08); }

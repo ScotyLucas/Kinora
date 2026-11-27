@@ -677,6 +677,15 @@ CREATE TABLE journal_hidden(
   item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
   PRIMARY KEY(profile_id, item_id)
 );`,
+	// Android: a paired device with an "inbox:" handle fetches its notifications instead of getting them
+	// through the relay; they wait here until it does (the oldest go when too many pile up)
+	`CREATE TABLE push_inbox(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL REFERENCES push_ios(device_id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX push_inbox_device ON push_inbox(device_id, id);`,
 }
 
 // ErrNewerSchema: the database was written by a newer Kinora (after rolling back an update, for example).

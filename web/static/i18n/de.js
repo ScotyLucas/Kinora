@@ -570,6 +570,19 @@
   "appearance": "Darstellung",
   "snow": "Schneefall",
   "snowHint": "Kleine weiße Schneeflocken fallen über den Bildschirm, solange kein Film und keine Folge läuft. Die Einstellung gehört zu deinem Profil und gilt auf allen deinen Geräten.",
+  "cast": "Auf Chromecast abspielen",
+  "castingTo": "Wiedergabe auf {0}",
+  "castFailed": "Der Chromecast konnte das nicht abspielen",
+  "share": "Teilen",
+  "notifications": "Mitteilungen",
+  "pushThisDevice": "Mitteilungen auf diesem Gerät",
+  "pushAndroidHint": "Der Server bewahrt sie auf, die App holt sie jede Viertelstunde ab (ohne Google-Dienste). Energiesparen kann sie verzögern.",
+  "pushCats": {
+   "requests": "Meine Anfragen (genehmigt, abgelehnt, angekommen)",
+   "episodes": "Neue Folgen verfolgter Serien",
+   "recap": "Der Monatsrückblick des Tagebuchs",
+   "admin_requests": "Neue Anfragen (Admin)"
+  },
   "maxBitrate": "Maximale Bitrate",
   "bitrateOpts": [
    [

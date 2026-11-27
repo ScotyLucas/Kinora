@@ -39,3 +39,6 @@ apps/shared/test/out/
 
 # benchmark runner binary
 scripts/bench/.bin/
+
+# Cloudflare Wrangler local cache
+.wrangler/

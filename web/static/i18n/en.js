@@ -570,6 +570,19 @@
   "appearance": "Appearance",
   "snow": "Snowfall",
   "snowHint": "Small white snowflakes fall across the screen while no film or episode is playing. It belongs to your profile, so it applies on all your devices.",
+  "cast": "Play on Chromecast",
+  "castingTo": "Playing on {0}",
+  "castFailed": "The Chromecast could not play this",
+  "share": "Share",
+  "notifications": "Notifications",
+  "pushThisDevice": "Notifications on this device",
+  "pushAndroidHint": "The server keeps them and the app fetches them every quarter of an hour (no Google services). Battery saving may delay them.",
+  "pushCats": {
+   "requests": "My requests (approved, denied, arrived)",
+   "episodes": "New episodes of series I follow",
+   "recap": "The Journal's monthly recap",
+   "admin_requests": "New requests (admin)"
+  },
   "maxBitrate": "Maximum bitrate",
   "bitrateOpts": [
    [

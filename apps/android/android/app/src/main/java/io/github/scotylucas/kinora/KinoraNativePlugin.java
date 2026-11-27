@@ -38,7 +38,7 @@ public class KinoraNativePlugin extends Plugin {
     /** Runs before the first page loads, so the launcher already sees window.KinoraAndroid. */
     @Override
     public void load() {
-        getBridge().getWebView().addJavascriptInterface(new KinoraAndroid(getActivity()), "KinoraAndroid");
+        getBridge().getWebView().addJavascriptInterface(new KinoraAndroid(getActivity(), getBridge().getWebView()), "KinoraAndroid");
         // offline downloads; what each page may do is decided by its address (KinoraOffline)
         getBridge().getWebView().addJavascriptInterface(new KinoraOffline(getActivity(), getBridge().getWebView()), "KinoraOffline");
     }

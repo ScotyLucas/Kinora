@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -116,6 +117,9 @@ func (s *Server) handlePushIOSPrefs(w http.ResponseWriter, r *http.Request, c *r
 		writeErr(w, http.StatusBadRequest, "ismeretlen értesítéstípus")
 		return
 	}
+	if cur.Inbox() {
+		prefs.Live = false // live activities go through the relay only
+	}
 	if _, err := s.st.SetPushPrefs(c.DeviceID, prefs); err != nil {
 		s.internalErr(w, r, err)
 		return
@@ -184,8 +188,11 @@ func (s *Server) handlePushIOSUnpair(w http.ResponseWriter, r *http.Request, c *
 	ok(w)
 }
 
-// forgetHandle tells the relay to drop a handle, in the background.
+// forgetHandle tells the relay to drop a handle, in the background. An inbox handle was never the relay's.
 func (s *Server) forgetHandle(h string) {
+	if strings.HasPrefix(h, store.InboxPrefix) {
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(s.bgCtx, 20*time.Second)
 		defer cancel()
@@ -232,4 +239,81 @@ func (s *Server) pushText(lang string) func(string, ...any) string {
 		}
 		return push.Format(hu, args...)
 	}
+}
+
+// --- Android: the app fetches its notifications --------------------------------------------------
+
+// handlePushAndroid tells the Android app whether this device takes notifications and which it turned off.
+// It needs no relay: the app asks for what is waiting (handlePushAndroidInbox).
+func (s *Server) handlePushAndroid(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	out := map[string]any{"enabled": true, "categories": push.Categories, "paired": false, "muted": []string{}}
+	if c.DeviceID != "" {
+		if p, _ := s.st.PushIOSFor(c.DeviceID); p != nil && p.Inbox() {
+			out["paired"] = true
+			if p.Muted != nil {
+				out["muted"] = p.Muted
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handlePushAndroidPair turns notifications on for this device: they wait on the server until the app
+// fetches them. A relay pairing the device had before is replaced.
+func (s *Server) handlePushAndroidPair(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	if !pushSession(w, c) {
+		return
+	}
+	var in pushPrefsIn
+	if !decode(w, r, &in) {
+		return
+	}
+	old, _ := s.st.PushIOSFor(c.DeviceID)
+	var oldPrefs *store.PushPrefs
+	if old != nil {
+		oldPrefs = &old.PushPrefs
+	}
+	prefs, valid := s.pushPrefs(r, c, in, oldPrefs)
+	if !valid {
+		writeErr(w, http.StatusBadRequest, "ismeretlen értesítéstípus")
+		return
+	}
+	prefs.Live = false
+	handle := store.InboxPrefix + c.DeviceID
+	if err := s.st.SetPushIOS(c.DeviceID, c.User.ID, handle, []byte{}, prefs); err != nil {
+		s.internalErr(w, r, err)
+		return
+	}
+	if old != nil && old.Handle != handle {
+		s.forgetHandle(old.Handle)
+	}
+	ok(w)
+}
+
+// handlePushAndroidInbox hands over the notifications waiting for this device, oldest first, and forgets them.
+func (s *Server) handlePushAndroidInbox(w http.ResponseWriter, r *http.Request, c *reqCtx) {
+	if !pushSession(w, c) {
+		return
+	}
+	p, err := s.st.PushIOSFor(c.DeviceID)
+	if err != nil {
+		s.internalErr(w, r, err)
+		return
+	}
+	if p == nil || !p.Inbox() {
+		writeErr(w, http.StatusNotFound, "ez az eszköz nincs párosítva")
+		return
+	}
+	bodies, err := s.st.TakePushInbox(c.DeviceID)
+	if err != nil {
+		s.internalErr(w, r, err)
+		return
+	}
+	msgs := make([]json.RawMessage, 0, len(bodies))
+	for _, b := range bodies {
+		if json.Valid([]byte(b)) {
+			msgs = append(msgs, json.RawMessage(b))
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
 }

@@ -195,6 +195,94 @@
     return caps;
   }
 
+  // ------------------------------------------------------------------ the Android app's native parts
+  // (KinoraAndroid.java). An older app lacks some methods: each call is then a no-op.
+  function call(name) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    try { if (native && typeof native[name] === 'function') return native[name].apply(native, args); } catch (e) { /* old app */ }
+    return undefined;
+  }
+  function has(name) { try { return !!native && typeof native[name] === 'function'; } catch (e) { return false; } }
+
+  // the server's web client is up: the app remembers this server (widgets, notifications) and hands over
+  // the link it was opened with (a shortcut, a widget, a notification: kinora://play/42 → #/play/42)
+  if (native && /^https?:$/.test(location.protocol)) {
+    var link = call('hello');
+    if (typeof link === 'string' && /^#\/[\w\/?=&%.-]*$/.test(link)) location.hash = link;
+  }
+
+  // picture-in-picture of the app: the page shows only the picture meanwhile
+  window.kinoraPip = function (on) {
+    document.documentElement.classList.toggle('app-pip', !!on);
+    try { window.dispatchEvent(new CustomEvent('kinora-pip', { detail: !!on })); } catch (e) { /* old engine */ }
+  };
+  // Chromecast session events: {event: 'connected' | 'disconnected', device}
+  window.kinoraCast = function (ev) {
+    try { window.dispatchEvent(new CustomEvent('kinora-cast', { detail: ev || {} })); } catch (e) { /* old engine */ }
+  };
+
+  // Playback outside the app: the player describes itself through navigator.mediaSession (as in a browser);
+  // here that goes to the media notification, the lock screen and headset buttons (MediaService.java),
+  // whose buttons come back as kinoraMedia(action, seconds).
+  if (has('media')) {
+    var handlers = {}, meta = null, pbState = 'none', posState = null, sentPos = 0, sendT = null;
+    var sendMedia = function () {
+      sendT = null;
+      var v = document.querySelector('video');
+      var st = !meta || pbState === 'none' ? 'none' : pbState === 'playing' ? 'playing' : 'paused';
+      var art = '';
+      try {
+        var a = meta && meta.artwork && meta.artwork[0] && new URL(meta.artwork[0].src, location.href);
+        if (a && a.origin === location.origin) art = a.pathname + a.search;
+      } catch (e) { /* no artwork */ }
+      sentPos = Date.now();
+      call('media', JSON.stringify({
+        state: st, title: meta ? meta.title || '' : '', artist: meta ? meta.artist || '' : '', album: meta ? meta.album || '' : '', art: art,
+        duration: posState ? posState.duration || 0 : 0, position: posState ? posState.position || 0 : 0,
+        rate: posState ? posState.playbackRate || 1 : 1, next: !!handlers.nexttrack,
+        w: v ? v.videoWidth || 0 : 0, h: v ? v.videoHeight || 0 : 0,
+      }));
+    };
+    var queue = function () { if (!sendT) sendT = setTimeout(sendMedia, 30); };
+    var Meta = function (o) {
+      o = o || {};
+      this.title = o.title || ''; this.artist = o.artist || ''; this.album = o.album || ''; this.artwork = o.artwork || [];
+    };
+    var session = {
+      setActionHandler: function (a, f) { handlers[a] = f || null; queue(); },
+      setPositionState: function (s) {
+        posState = s || null;
+        if (Date.now() - sentPos > 5000) queue(); // the notification runs its clock on its own in between
+      },
+    };
+    Object.defineProperty(session, 'metadata', { get: function () { return meta; }, set: function (m) { meta = m || null; queue(); } });
+    Object.defineProperty(session, 'playbackState', { get: function () { return pbState; }, set: function (s) { pbState = s; queue(); } });
+    try {
+      Object.defineProperty(navigator, 'mediaSession', { value: session, configurable: true });
+      window.MediaMetadata = Meta;
+    } catch (e) { /* the engine's own stays */ }
+    window.kinoraMedia = function (action, secs) {
+      var f = handlers[action];
+      if (f) { f({ action: action, seekTime: secs }); return; }
+      var v = document.querySelector('video');
+      if (!v) return;
+      if (action === 'play') v.play().catch(function () {});
+      if (action === 'pause') v.pause();
+    };
+  }
+
+  // Chromecast (KinoraCast.java): the player plays there instead, by the stream's address
+  var cast = null;
+  if (has('castAvailable') && call('castAvailable')) {
+    cast = {
+      connected: function () { return !!call('castConnected'); },
+      pick: function () { call('castPick'); },
+      load: function (o) { return !!call('castLoad', JSON.stringify(o)); },
+      cmd: function (c, arg) { call('castCmd', c, +arg || 0); },
+      state: function () { try { return JSON.parse(call('castState') || '{}'); } catch (e) { return {}; } },
+    };
+  }
+
   window.KinoraApp = {
     platform: platform,
     tv: tv,
@@ -206,5 +294,17 @@
     leaving: false, // set while the app walks back to its launcher
     keepAwake: keepAwake,
     extraCaps: extraCaps,
+    // tick | light | medium | heavy | success | warning | error
+    haptic: function (kind) { call('haptic', kind || 'light'); },
+    // the system share sheet; false where the app has none (the page then copies the text)
+    share: has('share') ? function (title, text) { call('share', title || '', text || ''); return true; } : null,
+    canPip: function () { return !!call('canPip'); },
+    pip: function () { return !!call('pip'); },
+    // this device's notifications, fetched by the app itself (GET /api/push/android/inbox)
+    pushAvailable: has('push'),
+    push: function (on) { call('push', !!on); },
+    // widgets and Android TV's Play next row catch up (something was watched)
+    refresh: function () { call('refresh'); },
+    cast: cast,
   };
 })();

@@ -151,6 +151,7 @@ const ICONS = {
   eyeOff: 'M3 3l18 18M10.6 6.1A10 10 0 0112 6c6 0 10 6 10 6a17 17 0 01-3 3.5M6.6 7.6C3.8 9.3 2 12 2 12s4 7 10 7a9.5 9.5 0 004.4-1.1', plus: 'M12 5v14M5 12h14', dl: 'M12 4v11M7 10l5 5 5-5M5 20h14',
   lock: 'M7 11V8a5 5 0 0110 0v3M5 11h14v10H5z', people: 'M9 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM2 20c0-4 3-6 7-6s7 2 7 6M16 4.5a3.5 3.5 0 010 6.5M18 14c2.5.6 4 2.6 4 6', tag: 'M3 12V4h8l10 10-8 8z M7.5 8.5h.01',
   pip: 'M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2zM12.5 12.5h5.5v3.5h-5.5z', list: 'M4 6h16M4 12h16M4 18h10', pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  cast: 'M3 18a3 3 0 013 3M3 14a7 7 0 017 7M3 10a11 11 0 0111 11M3 7V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2h-4', share: 'M12 4v11M8 8l4-4 4 4M5 13v6a1 1 0 001 1h12a1 1 0 001-1v-6',
   x: 'M6 6l12 12M18 6L6 18', chevDown: 'M6 9l6 6 6-6', filter: 'M4 5h16l-6 8v6l-4-2v-4z',
   film: 'M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4', tv: 'M3 6h18v12H3zM8 21h8M12 18v3M9 3l3 3 3-3',
   search: 'M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.8-4.8', sortAsc: 'M4 7h5M4 12h8M4 17h11M18 19V5M15 8l3-3 3 3', sortDesc: 'M4 7h11M4 12h8M4 17h5M18 5v14M15 16l3 3 3-3',
@@ -359,9 +360,19 @@ async function routeView(p0, p1, p2, q) {
     case 'admin': return await viewAdmin(p1 || 'dash');
     case 'account': return await viewAccount();
     case 'journal': return await viewJournal(q);
+    case 'resume': return await resumeLast();
     default: return go('#/home');
   }
 }
+// the app's "Resume" shortcut: the first title of Continue watching, or home when there is none
+async function resumeLast() {
+  const r = await GET('/api/home', { quiet: true }).catch(() => null);
+  const row = r && (r.rows || []).find(x => x.id === 'continue');
+  const it = row && (row.items || [])[0];
+  location.replace(it ? `#/play/${it.id}` : '#/home');
+}
+// haptic feedback in the Android app (a no-op elsewhere): light | medium | heavy | tick | success | error
+const buzz = kind => APP?.haptic?.(kind);
 // a page with a heading of its own names the browser tab and its history entry ("Filmek – Kinora")
 function titleFromHeading() {
   if (document.title !== T.appName) return;
@@ -2423,6 +2434,7 @@ async function viewAccount() {
     h('div.panel', { class: 'narrow' }, h('h2', null, T.changePw), field(T.currentPw, cur), field(T.newPw, nw),
       h('button.btn.primary', { onclick: async () => { await POST('/api/me/password', { current: cur.value, new: nw.value }); cur.value = nw.value = ''; toast(T.saved); } }, T.save)),
     h('div.panel', { class: 'narrow' }, h('h2', null, T.language), langSwitch()),
+    pushPanel(),
     snowPanel(),
     devicesPanel(),
     h('p.muted', null, `${state.me.user.username} · ${state.me.server_name} · ${T.version} ${state.me.version}`));
@@ -2461,6 +2473,35 @@ function goalBlock(films) {
         h('p.muted.small', null, T.jGoalDue(due)))];
   };
   put(box, ...show());
+  return box;
+}
+
+// the Android app's notifications on this device: the server keeps them, the app fetches them in the
+// background (no Google push service); which kinds come is chosen here, as in the iOS app
+function pushPanel() {
+  if (!APP?.pushAvailable) return h('span');
+  const box = h('div.panel', { class: 'narrow' });
+  const load = async () => {
+    const r = await GET('/api/push/android', { quiet: true }).catch(() => null);
+    if (!r || !r.enabled) { box.remove(); return; }
+    const muted = new Set(r.muted || []);
+    const on = h('input', { type: 'checkbox', checked: r.paired, onchange: async e => {
+      const want = e.target.checked;
+      try {
+        if (want) await POST('/api/push/android', {}); else await api('DELETE', '/api/push/android');
+        APP.push(want); buzz('success'); toast(T.saved); load();
+      } catch { e.target.checked = !want; }
+    } });
+    const cats = (r.categories || []).filter(c => c !== 'admin_requests' || state.me.user.is_admin);
+    put(box, h('h2', null, T.notifications), h('label.check', null, on, T.pushThisDevice), h('p.hint', null, T.pushAndroidHint),
+      r.paired && h('div', { class: 'mt3' }, cats.map(c => h('label.check', null, h('input', { type: 'checkbox', checked: !muted.has(c), onchange: async e => {
+        const was = !e.target.checked;
+        if (e.target.checked) muted.delete(c); else muted.add(c);
+        try { await api('PATCH', '/api/push/android', { muted: [...muted] }); toast(T.saved); }
+        catch { e.target.checked = was; if (was) muted.delete(c); else muted.add(c); }
+      } }), T.pushCats[c] || c))));
+  };
+  load();
   return box;
 }
 
@@ -2597,7 +2638,12 @@ async function viewPlayer(id, q) {
   const moreBtn = h('button.p-btn', { 'aria-label': T.moreActions, title: T.moreActions }, icon('more', true));
   const fsBtn = h('button.p-btn' + (TV ? '.hidden' : ''), { 'aria-label': T.fullscreen, title: T.fullscreen + ' (F)' }, icon('fs'));
   const chapBtn = h('button.p-btn.hidden', { 'aria-label': T.chapters, title: T.chapters }, icon('list'));
-  const pipBtn = document.pictureInPictureEnabled && !TV ? h('button.p-btn', { 'aria-label': T.pip, title: T.pip + ' (P)' }, icon('pip')) : null;
+  const appPip = !TV && !!APP?.canPip?.(); // the Android app's own picture-in-picture (its WebView has none)
+  const pipBtn = (document.pictureInPictureEnabled || appPip) && !TV ? h('button.p-btn', { 'aria-label': T.pip, title: T.pip + ' (P)' }, icon('pip')) : null;
+  // Chromecast from the Android app; not in a watch party (everyone plays on their own screen there)
+  const castApi = !TV && !q.get('party') ? APP?.cast || null : null;
+  const castBtn = castApi ? h('button.p-btn', { 'aria-label': T.cast, title: T.cast }, icon('cast')) : null;
+  const castNote = h('div.cast-note');
   const pop = h('div.p-pop.hidden');
   const upnext = h('div.upnext.hidden');
   const skipBtn = h('button.btn.primary.big.skip-seg.hidden', { onclick: () => doSkip() });
@@ -2615,7 +2661,7 @@ async function viewPlayer(id, q) {
           playBtn,
           h('button.p-btn', { 'aria-label': T.forward, title: T.forward, onclick: () => seekBy(10) }, icon('ff')),
           nextBtn),
-        h('div.p-r', null, chapBtn, ccBtn, gearBtn, pipBtn, fsBtn))));
+        h('div.p-r', null, chapBtn, ccBtn, gearBtn, castBtn, pipBtn, fsBtn))));
   const stage = h('div.stage', null, video, ui, pop, upnext, skipBtn);
   const player = h('div.player.paused', null, stage);
   root.append(player);
@@ -2634,10 +2680,15 @@ async function viewPlayer(id, q) {
   let party = null;
   video.volume = +vol.value;
 
-  const pos = () => offset + (video.currentTime || 0);
+  // casting: the Chromecast plays the stream, the page follows its state (castSt, polled every second)
+  let casting = false, castSt = {}, castPoll = null, castEnded = false;
+  const CAST_CAPS = { video: ['h264'], audio: ['aac'], containers: ['mp4'] }; // what the Default Media Receiver plays everywhere
+  const pos = () => offset + ((casting ? castSt.position : video.currentTime) || 0);
+  const isPaused = () => casting ? !castSt.playing : video.paused;
   const isHLS = () => mode !== 'direct';
   const transcodedEnd = () => {
     if (!isHLS()) return duration;
+    if (casting) return offset + (castSt.duration || 0);
     let end = 0;
     if (hls && hls.levels && hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : 0]?.details) end = hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : 0].details.totalduration;
     else if (video.seekable && video.seekable.length) end = video.seekable.end(video.seekable.length - 1);
@@ -2648,7 +2699,7 @@ async function viewPlayer(id, q) {
     if (dead) return;
     clearUpNext();
     put(mid, spinner);
-    const body = { caps, start: startAt, max_bitrate: maxBitrate, force, prev_session: session || '' };
+    const body = { caps: casting ? CAST_CAPS : caps, start: startAt, max_bitrate: maxBitrate, force: casting && force === 'remux' ? '' : force, prev_session: session || '' };
     if (audioIdx != null) body.audio_idx = audioIdx;
     if (burnIdx != null) body.burn_sub_idx = burnIdx;
     let r;
@@ -2666,6 +2717,20 @@ async function viewPlayer(id, q) {
     if (hls) { hls.destroy(); hls = null; }
     video.removeAttribute('src');
     const autoplay = opts.paused ? false : true;
+    if (casting) {
+      castEnded = false;
+      castSt = { connected: true, position: mode === 'direct' ? startAt : 0, playing: false };
+      const art = item && imgURL(item, item.kind === 'episode' ? 'thumb' : 'backdrop');
+      castApi.load({
+        url: new URL(r.url, location.href).href, mime: mode === 'direct' ? 'video/mp4' : 'application/x-mpegURL',
+        title: item ? (item.kind === 'episode' ? item.series_title : item.title) : '',
+        subtitle: item && item.kind === 'episode' ? `${T.ep(item.season_num, item.episode_num)} · ${item.title}` : '',
+        image: art ? new URL(art, location.href).href : '', start: mode === 'direct' ? startAt : 0,
+      });
+      put(mid, castNote);
+      paintTimeline();
+      return;
+    }
     if (mode === 'direct') {
       video.src = r.url;
       video.addEventListener('loadedmetadata', () => { if (startAt > 0) video.currentTime = startAt; }, { once: true });
@@ -2694,13 +2759,21 @@ async function viewPlayer(id, q) {
 
   async function seekTo(t) {
     t = Math.max(0, Math.min(duration ? duration - 1 : t, t));
+    if (casting) {
+      if (!isHLS()) { castApi.cmd('seek', t); castSt.position = t; paintTimeline(); return; }
+      if (t >= offset && t <= transcodedEnd() - 1) { castApi.cmd('seek', t - offset); castSt.position = t - offset; paintTimeline(); return; }
+      await start(t);
+      return;
+    }
     if (!isHLS()) { video.currentTime = t; return; }
     if (t >= offset && t <= transcodedEnd() - 1) { video.currentTime = t - offset; return; }
     await start(t, { paused: video.paused && !party });
   }
-  function seekBy(d) { userSeek(pos() + d); }
+  function seekBy(d) { buzz('light'); userSeek(pos() + d); }
   function userSeek(t) { if (party) party.send({ t: 'seek', pos: t }); seekTo(t); }
   function togglePlay() {
+    buzz('light');
+    if (casting) { castApi.cmd(castSt.playing ? 'pause' : 'play'); castSt.playing = !castSt.playing; paintCastState(); return; }
     if (video.paused) { if (party) party.send({ t: 'play' }); video.play().catch(() => {}); }
     else { if (party) party.send({ t: 'pause', pos: pos() }); video.pause(); }
   }
@@ -2857,7 +2930,8 @@ async function viewPlayer(id, q) {
     return [h('h3', null, T.chapters), ...chs.map((c, i) => opt(`${fmtTime(c.start)}  ${c.title || T.chapters + ' ' + (i + 1)}`, c === cur, () => userSeek(c.start)))];
   }
   function togglePiP() {
-    if (!pipBtn) return;
+    if (!pipBtn || casting) return;
+    if (appPip) { if (!video.paused || video.currentTime > 0) APP.pip(); return; }
     if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
     else video.requestPictureInPicture().catch(() => {});
   }
@@ -2892,8 +2966,65 @@ async function viewPlayer(id, q) {
   moreBtn.onclick = () => item && openPop(buildMore);
   chapBtn.onclick = () => info && openPop(buildChapters);
   if (pipBtn) pipBtn.onclick = togglePiP;
+
+  // ---------------------------------------------------------------- Chromecast
+  // Connecting moves playback there from where it is (a fresh stream the receiver plays: H.264/AAC);
+  // disconnecting brings it back here, paused, at the receiver's position.
+  function paintCastState() {
+    const paused = !castSt.playing;
+    player.classList.toggle('paused', paused);
+    put(playBtn, icon(paused ? 'play' : 'pause')); playBtn.setAttribute('aria-label', paused ? T.play : T.pause);
+  }
+  function castTick() {
+    if (!casting || dead) return;
+    const s = castApi.state();
+    if (!s.connected) { castOff(); return; }
+    castSt = s;
+    put(castNote, icon('cast'), h('span', null, T.castingTo(s.device || 'Chromecast')));
+    if (mid.firstChild !== castNote) put(mid, castNote);
+    paintCastState();
+    if (!dragging) paintTimeline();
+    const now = Date.now();
+    if (now - lastReport > 10000 && s.playing) { lastReport = now; report(); }
+    checkUpNext();
+    checkSkip();
+    if (s.failed && !castEnded) { castEnded = true; toast(T.castFailed, true); }
+    if (s.ended && !castEnded) {
+      castEnded = true;
+      report(true);
+      if (nextItem && profile.autoplay_next) playNext(); else if (!nextItem) exit();
+    }
+  }
+  function castOn() {
+    if (casting || dead || !castApi.connected()) return;
+    const at = info ? pos() : resumeAt0;
+    casting = true;
+    castBtn.classList.add('on');
+    video.pause(); APP?.keepAwake(false);
+    if (ms) ms.playbackState = 'none'; // the Cast SDK shows its own notification meanwhile
+    clearInterval(castPoll); castPoll = setInterval(castTick, 1000);
+    if (info) start(at);
+  }
+  function castOff() {
+    if (!casting) return;
+    const at = pos();
+    casting = false;
+    clearInterval(castPoll); castPoll = null;
+    castBtn.classList.remove('on');
+    if (mid.firstChild === castNote) put(mid);
+    if (dead) return;
+    setupMediaSession(); if (ms) ms.playbackState = 'paused';
+    start(at, { paused: true });
+  }
+  let resumeAt0 = 0;
+  const onCast = e => { const ev = e.detail || {}; if (ev.event === 'connected') castOn(); else if (ev.event === 'disconnected') castOff(); };
+  if (castBtn) {
+    castBtn.onclick = () => castApi.pick();
+    addEventListener('kinora-cast', onCast);
+  }
   favBtn.onclick = async () => {
     if (!item) return;
+    buzz('medium');
     const v = !item.user_data.favorite;
     await POST(`/api/items/${id}/favorite`, { favorite: v }); // on failure nothing changes
     item.user_data.favorite = v; favBtn.classList.toggle('on', v); put(favBtn, icon('heart', v));
@@ -2948,8 +3079,8 @@ async function viewPlayer(id, q) {
   };
   fsBtn.onclick = toggleFS;
   function toggleFS() { if (document.fullscreenElement) document.exitFullscreen(); else player.requestFullscreen?.().catch(() => {}); }
-  video.addEventListener('play', () => { APP?.keepAwake(true); player.classList.remove('paused'); put(playBtn, icon('pause')); playBtn.setAttribute('aria-label', T.pause); if (ms) ms.playbackState = 'playing'; });
-  video.addEventListener('pause', () => { APP?.keepAwake(false); player.classList.add('paused'); wake(); /* paused: show the controls again */ put(playBtn, icon('play')); playBtn.setAttribute('aria-label', T.play); if (ms) ms.playbackState = 'paused'; report(); });
+  video.addEventListener('play', () => { APP?.keepAwake(true); player.classList.remove('paused'); put(playBtn, icon('pause')); playBtn.setAttribute('aria-label', T.pause); if (ms && !casting) ms.playbackState = 'playing'; });
+  video.addEventListener('pause', () => { APP?.keepAwake(false); player.classList.add('paused'); wake(); /* paused: show the controls again */ put(playBtn, icon('play')); playBtn.setAttribute('aria-label', T.play); if (ms && !casting) ms.playbackState = 'paused'; report(); });
   const ms = navigator.mediaSession;
   const msAction = (a, f) => { try { ms.setActionHandler(a, f); } catch { /* action not supported here */ } };
   let lastPosState = 0;
@@ -3086,6 +3217,7 @@ async function viewPlayer(id, q) {
   function doSkip() {
     const g = currentSeg();
     if (!g) return;
+    buzz('heavy');
     skipped.add(g.type + g.start);
     skipBtn.classList.add('hidden'); shownSeg = null;
     if (party) party.send({ t: 'skip', pos: g.end, kind: g.type }); // everyone in the party jumps
@@ -3122,6 +3254,7 @@ async function viewPlayer(id, q) {
   async function playNext() {
     clearUpNext();
     if (!nextItem) return;
+    buzz('heavy');
     await report(true);
     if (party) party.send({ t: 'item', item_id: nextItem.id, pos: 0 });
     exiting = true;
@@ -3142,6 +3275,9 @@ async function viewPlayer(id, q) {
     document.removeEventListener('keydown', keys);
     clearUpNext(); clearTimeout(idleT);
     if (!exiting) report();
+    if (castBtn) removeEventListener('kinora-cast', onCast);
+    if (casting) { castApi.cmd('stop'); clearInterval(castPoll); casting = false; }
+    APP?.refresh?.(); // the app's widgets and Android TV's Play next row show where this was left
     if (hls) hls.destroy();
     video.pause(); video.removeAttribute('src'); video.load();
     if (session) fetch('/api/hls/' + session, { method: 'DELETE', credentials: 'same-origin', keepalive: true }).catch(() => {});
@@ -3172,6 +3308,8 @@ async function viewPlayer(id, q) {
   if (partyCode) party = partyClient(partyCode, player, stage, { video, pos, seekTo, getItemId: () => id, leave: () => exit(),
     onItem: nid => { exiting = true; location.replace(`#/play/${nid}?party=${partyCode}`); } });
   setupMediaSession();
+  resumeAt0 = partyCode ? 0 : resumeAt;
+  if (castApi && castApi.connected()) castOn(); // already casting: the next title goes there too
   await start(partyCode ? 0 : resumeAt, { paused: !!partyCode });
   if (info) {
     chooseInitialSubtitle(); applySubtitle(); chapterMarks();
@@ -3193,7 +3331,7 @@ function partyClient(code, player, stage, p) {
   panel.append(
     h('button.btn.danger.party-leave', { onclick: () => p.leave() }, icon('back'), T.partyLeave),
     h('header', null, h('div.row-gap', { class: 'spread' }, h('div', null, h('div.code', { 'aria-label': T.party + ' ' + code }, code)),
-      h('button.btn', { onclick: () => modal(T.partyLink, h('div', null, qrImg(link), h('p.mono', { class: 'mt3 break-all' }, link)), close => [h('button.btn', { onclick: () => copyText(link) }, T.copy), h('button.btn.primary', { onclick: close }, T.close)]) }, T.partyLink)),
+      h('button.btn', { onclick: () => modal(T.partyLink, h('div', null, qrImg(link), h('p.mono', { class: 'mt3 break-all' }, link)), close => [APP?.share && h('button.btn', { onclick: () => APP.share(T.partyLink, link) }, icon('share'), T.share), h('button.btn', { onclick: () => copyText(link) }, T.copy), h('button.btn.primary', { onclick: close }, T.close)]) }, T.partyLink)),
       h('label.check.hidden', { class: 'mt3 mb0' }, everyone, T.partyEveryone), status),
     membersEl, chat, reacts,
     h('form', { onsubmit: e => { e.preventDefault(); if (msg.value.trim()) { send({ t: 'chat', text: msg.value }); msg.value = ''; } } }, msg, h('button.btn', { type: 'submit' }, T.partySend)));

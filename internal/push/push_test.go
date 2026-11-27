@@ -458,3 +458,50 @@ func TestRecapIsToldOncePerProfile(t *testing.T) {
 		t.Fatalf("%+v", m)
 	}
 }
+
+func TestInboxDeviceGetsNotificationsWithoutRelay(t *testing.T) {
+	st, rl, n := setup(t)
+	st.SetSetting("push_enabled", "0") // no relay at all
+	ctx := context.Background()
+	anna, _ := st.CreateUser("anna", "secret123", false)
+	_, dev, err := st.CreateDeviceSession(anna.ID, store.DeviceInfo{Platform: "android"}, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPushIOS(dev, anna.ID, store.InboxPrefix+dev, []byte{}, store.PushPrefs{}); err != nil {
+		t.Fatal(err)
+	}
+	pair(t, st, anna.ID, strings.Repeat("a", 43)) // an iOS device, unreachable while the relay is off
+	rid := request(t, st, anna.ID, store.ReqDownloading)
+	setStatus(t, st, rid, store.ReqAvailable, "")
+
+	n.Tick(ctx)
+	if sent, _, _ := rl.Snapshot(); len(sent) != 0 {
+		t.Fatalf("relay used while off: %d", len(sent))
+	}
+	got, err := st.TakePushInbox(dev)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("inbox %v %v", got, err)
+	}
+	var m push.Message
+	if err := json.Unmarshal([]byte(got[0]), &m); err != nil || m.Type != "request_available" || m.Title != "Mátrix" {
+		t.Fatalf("%+v %v", m, err)
+	}
+	if outbox(st) != 0 {
+		t.Fatal("outbox not emptied")
+	}
+}
+
+func TestInboxKeepsTheNewest(t *testing.T) {
+	st, _, _ := setup(t)
+	anna, _ := st.CreateUser("anna", "secret123", false)
+	_, dev, _ := st.CreateDeviceSession(anna.ID, store.DeviceInfo{Platform: "android"}, 0, 0)
+	st.SetPushIOS(dev, anna.ID, store.InboxPrefix+dev, []byte{}, store.PushPrefs{})
+	for i := range 60 {
+		st.AddPushInbox(dev, []byte(`{"n":`+itoa(int64(i))+`}`))
+	}
+	got, _ := st.TakePushInbox(dev)
+	if len(got) != 50 || got[0] != `{"n":10}` || got[49] != `{"n":59}` {
+		t.Fatalf("kept %d: %v … %v", len(got), got[0], got[len(got)-1])
+	}
+}

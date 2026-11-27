@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the native parts: media controls, notifications, widgets, app shortcuts -->
+<resources>
+    <string name="channel_playback">Playback</string>
+    <string name="channel_notifications">Notifications</string>
+    <string name="media_rewind">Back 10 seconds</string>
+    <string name="media_pause">Pause</string>
+    <string name="media_play">Play</string>
+    <string name="media_forward">Forward 10 seconds</string>
+    <string name="widget_continue">Continue watching</string>
+    <string name="widget_new">New in the library</string>
+    <string name="widget_journal">Journal</string>
+    <string name="widget_continue_desc">What you are in the middle of</string>
+    <string name="widget_new_desc">The newest titles of the library</string>
+    <string name="widget_journal_desc">What you watched this month</string>
+    <string name="widget_open">Open Kinora to sign in</string>
+    <string name="widget_empty">Nothing here yet</string>
+    <string name="shortcut_resume">Resume</string>
+    <string name="shortcut_resume_long">Resume the last title</string>
+    <string name="shortcut_search">Search</string>
+    <string name="shortcut_downloads">Downloads</string>
+    <plurals name="widget_viewings">
+        <item quantity="one">viewing this month</item>
+        <item quantity="other">viewings this month</item>
+    </plurals>
+    <plurals name="widget_hours">
+        <item quantity="one">%d hour</item>
+        <item quantity="other">%d hours</item>
+    </plurals>
+</resources>

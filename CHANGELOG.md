@@ -5,6 +5,19 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Új (Android):** kép a képben (gombbal, Android 12-től magától is, amikor kilépsz egy futó videóból), médiavezérlő az
+  értesítések között és a zárképernyőn, a lejátszás a háttérben is megy; Chromecast a lejátszóból; widgetek (Folytatás,
+  Új a könyvtárban, Napló); parancsikonok az ikonon (Folytatás, Keresés, Napló, Letöltések); rezgés a lejátszó
+  gombjainál; a party linkje a rendszer megosztójával; `kinora://` linkek. Android TV-n a „Lejátszás következő” sorban
+  megjelenik, amit épp nézel. Értesítések Google-szolgáltatások nélkül: a szerver megőrzi őket, az app negyedóránként
+  lekéri; a Fiók oldalon kapcsolható be, kategóriánként.
+- **New (Android):** picture in picture (with a button, and from Android 12 on its own when you leave a playing video),
+  media controls in the notifications and on the lock screen, playback continues in the background; Chromecast from the
+  player; widgets (Continue watching, New in the library, Journal); app shortcuts (Resume, Search, Journal, Downloads);
+  haptics on the player's buttons; the party link through the system share sheet; `kinora://` links. On Android TV what
+  you are watching shows in the "Play next" row. Notifications without Google services: the server keeps them and the
+  app fetches them every quarter of an hour; turn them on, by category, on the Account page.
+
 ## 1.1.96 – 2026-11-26
 
 - **Új (iPhone, iPad):** értesítés, amikor elkészül a havi összesítő (a hónap első hetében, délelőtt 10 után, ha az előző

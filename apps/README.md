@@ -121,7 +121,28 @@ a platformok alapból viszont csak HTTPS-t engednek:
 Biztonság: a webkliens app-módban is a szerver saját originjén fut, így ugyanaz a sütis munkamenet védi, mint a böngészőben. Az indító a többi
 originről csak a nyilvános `/api/status`-t olvashatja. Androidon a WebView az indítóból bármelyik http(s) címre továbbléphet (ez a választott
 szerver), a szerver oldalairól viszont csak ugyanarra a hostra; minden más link a böngészőben nyílik meg. A szerver oldalai a Capacitor-hidat
-nem kapják meg, csak a szűk `window.KinoraAndroid` interfészt (TV-e, modellnév, képernyő ébren tartása, kilépés).
+nem kapják meg, csak a szűk `window.KinoraAndroid` interfészt (TV-e, modellnév, képernyő ébren tartása, kilépés, és az alábbi natív
+részek). Hogy egy hívás mit tehet, azt a Java oldal a WebView saját címéből dönti el, nem abból, amit a lap állít magáról: a Chromecastra
+csak a lap saját szerverének címe mehet, a widgetek és értesítések szervere a legutóbb nyitott szerveroldal originje.
+
+### Az Android app natív részei
+
+A webkliens `web/static/appshell.js`-e köti be őket (`KinoraApp.haptic`, `share`, `pip`, `push`, `refresh`, `cast`); régebbi appban a hívások
+üresen futnak le. Mindegyik a platform saját API-ját használja, a Chromecast kivételével új függőség nélkül.
+
+| Funkció | Java | Megjegyzés |
+|---|---|---|
+| Kép a képben | `MainActivity`, `KinoraAndroid.pip` | gomb a lejátszóban; Android 12+ magától, 8–11-en a kezdőképernyőre lépéskor; TV-n nincs |
+| Médiavezérlő, háttérlejátszás | `MediaService`, `MediaButtons` | a lejátszó `navigator.mediaSession`-je → értesítés, zárképernyő, fülhallgató gombjai; foreground service lejátszás közben |
+| `kinora://` linkek | `Links`, `MainActivity` | `item/ID`, `play/ID`, `party/KÓD`, `journal`, `downloads`, `search`, `resume`, `home`; minden más link eldobva |
+| Alkalmazás-parancsikonok | `res/xml/shortcuts.xml` | Folytatás, Keresés, Napló, Letöltések |
+| Rezgés, megosztás | `KinoraAndroid.haptic`, `share` | lejátszás/tekerés, kedvenc, átugrás, következő rész; a party linkje a rendszer megosztójával |
+| Widgetek | `Widgets`, `SyncJob` | Folytatás és Új a könyvtárban (3 poszter), Napló (e havi megtekintések, órák) |
+| Android TV „Lejátszás következő” sor | `WatchNext` | a Folytatás és a következő részek; a poszter címe csak képre jó tokent visz (`media_token`) |
+| Értesítések | `SyncJob` | Google push nélkül: a szerver megőrzi őket, az app negyedóránként lekéri (`GET /api/push/android/inbox`); a Fiók oldalon kapcsolható |
+| Chromecast | `KinoraCast` | Default Media Receiver; a lejátszó H.264/AAC streamet kér hozzá, a címben stream-tokennel; partyban nincs |
+
+A háttérmunkát (`SyncJob`, JobScheduler, hálózattal) a WebView `kinora_session` sütijével, `Authorization: Bearer`-ként végzi az app.
 A régi app (`legacy/`, iOS) **Bearer tokennel** hívja az API-t: a szerver ezekre az app-originekre engedélyez CORS-t, `Allow-Credentials` nélkül,
 és eldobja a sütit. A `<video>` és `<img>` egy rövid életű, aláírt **stream-tokent** kap (`?st=`).
 
@@ -137,4 +158,3 @@ HLS: a webkliens hls.js-t használ, ahol van MediaSource (TV-k, Android), iOS-en
 - **Offline letöltés az Android appban:** a webkliens app-módban a letöltést a rendszer DownloadManagerének adja át
   (`window.KinoraOffline`, `KinoraOffline.java`), az indító pedig szerver nélkül is lejátssza az utolsó profil letöltéseit.
   Felépítés, profilszabályok, biztonság és a kipróbálási lista: [docs/OFFLINE.md](../docs/OFFLINE.md).
-- Chromecast vezérlés. (AirPlay és kép a képben az iOS appban van.)

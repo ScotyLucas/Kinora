@@ -570,6 +570,19 @@
   "appearance": "Megjelenés",
   "snow": "Hóesés",
   "snowHint": "Kis fehér hópelyhek hullanak a képernyőn, amikor nem megy film vagy sorozat. A profilodhoz tartozik, így minden eszközödön érvényes.",
+  "cast": "Lejátszás Chromecaston",
+  "castingTo": "Lejátszás itt: {0}",
+  "castFailed": "A Chromecast nem tudta lejátszani",
+  "share": "Megosztás",
+  "notifications": "Értesítések",
+  "pushThisDevice": "Értesítések ezen az eszközön",
+  "pushAndroidHint": "A szerver megőrzi őket, az app pedig negyedóránként lekéri (Google nélkül). Az akkumulátorkímélő mód késleltetheti őket.",
+  "pushCats": {
+   "requests": "A kéréseim (jóváhagyva, elutasítva, megérkezett)",
+   "episodes": "Új részek a követett sorozatokhoz",
+   "recap": "A Napló havi összefoglalója",
+   "admin_requests": "Új kérések (admin)"
+  },
   "maxBitrate": "Maximális bitráta",
   "bitrateOpts": [
    [

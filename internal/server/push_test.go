@@ -89,3 +89,51 @@ func waitDeleted(t *testing.T, rl *pushtest.Relay, h string) {
 	}
 	t.Fatalf("relay was not told to delete %s", h)
 }
+
+func TestPushAndroidInbox(t *testing.T) {
+	c, st := newTestServer(t)
+	var info map[string]any
+	// no relay needed: the Android app fetches its notifications
+	if code := c.do("GET", "/api/push/android", nil, &info); code != 200 || info["enabled"] != true || info["paired"] != false {
+		t.Fatalf("status: %d %v", code, info)
+	}
+	if code := c.do("GET", "/api/push/android/inbox", nil, nil); code != 404 {
+		t.Fatalf("inbox before pairing: %d", code)
+	}
+	if code := c.do("POST", "/api/push/android", map[string]any{"muted": []string{"spam"}}, nil); code != 400 {
+		t.Fatalf("unknown category accepted: %d", code)
+	}
+	if code := c.do("POST", "/api/push/android", map[string]any{"muted": []string{"recap"}, "live": true}, nil); code != 200 {
+		t.Fatalf("pair %d", code)
+	}
+	if code := c.do("GET", "/api/push/android", nil, &info); code != 200 || info["paired"] != true || fmt.Sprint(info["muted"]) != "[recap]" {
+		t.Fatalf("paired: %v", info)
+	}
+	devs, _ := st.PushIOSAll()
+	if len(devs) != 1 || !devs[0].Inbox() || devs[0].Live {
+		t.Fatalf("stored %+v", devs)
+	}
+	if err := st.AddPushInbox(devs[0].DeviceID, []byte(`{"v":1,"type":"episodes","title":"A"}`)); err != nil {
+		t.Fatal(err)
+	}
+	st.AddPushInbox(devs[0].DeviceID, []byte(`{"v":1,"type":"recap","title":"B"}`))
+	var got struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if code := c.do("GET", "/api/push/android/inbox", nil, &got); code != 200 || len(got.Messages) != 2 || got.Messages[0]["title"] != "A" || got.Messages[1]["title"] != "B" {
+		t.Fatalf("inbox: %d %+v", code, got)
+	}
+	if c.do("GET", "/api/push/android/inbox", nil, &got); len(got.Messages) != 0 {
+		t.Fatalf("handed over twice: %+v", got)
+	}
+	// prefs go through the same PATCH; live activities stay off
+	if code := c.do("PATCH", "/api/push/android", map[string]any{"muted": []string{}, "live": true}, nil); code != 200 {
+		t.Fatalf("prefs %d", code)
+	}
+	if devs, _ = st.PushIOSAll(); devs[0].Live || !devs[0].Wants("recap") {
+		t.Fatalf("prefs stored %+v", devs[0])
+	}
+	if code := c.do("DELETE", "/api/push/android", nil, nil); code != 200 || st.CountPushIOS() != 0 {
+		t.Fatalf("unpair %d", code)
+	}
+}

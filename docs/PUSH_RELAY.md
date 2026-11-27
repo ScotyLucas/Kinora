@@ -219,6 +219,20 @@ csomagban lévő `s` mező alapján választja ki a kulcsot.
   | `POST /api/push/ios` | `{"handle": "<43 karakter base64url>", "key": "<32 bájt, base64 vagy base64url>"}`; új handle-nél a régit törli a közvetítőnél |
   | `DELETE /api/push/ios` | párosítás bontása, a handle törlése a közvetítőnél |
 
+- **Android (közvetítő nélkül):** az Android app nem kap pusht; a szerver az eszköznek szóló csomagokat a
+  `push_inbox` táblában tartja (eszközönként a legújabb 50-et), az app pedig a háttérben negyedóránként lekéri.
+  A párosítás ugyanabban a `push_ios` táblában van, `inbox:<device_id>` handle-lel és kulcs nélkül (nincs mit
+  titkosítani: a csomag a saját munkamenetével, HTTPS-en vagy a helyi hálózaton megy). A közvetítő kikapcsolva
+  is működik; élő tevékenység nincs.
+
+  | Kérés | Leírás |
+  |---|---|
+  | `GET /api/push/android` | `{"enabled": true, "categories", "paired", "muted"}` |
+  | `POST /api/push/android` | bekapcsolás ezen az eszközön (`{"muted": [...]}` opcionális); a régi közvetítős párosítás megszűnik |
+  | `PATCH /api/push/android` | `{"muted": [...]}` |
+  | `DELETE /api/push/android` | kikapcsolás |
+  | `GET /api/push/android/inbox` | `{"messages": [<csomag>, …]}`, és a kiadottakat törli |
+
 - **Küldés:** a háttérben 30 mp-enként a teljesült kérések (`acq_requests.status='available'`, `pushed=0`)
   a kérő összes párosított eszközére mennek `collapse_id: "req-<id>"`-vel. Ami több mint 24 órája teljesült
   (a push ki volt kapcsolva), azt küldés nélkül megjelöli. Ha a közvetítő nem érhető el (`5xx`, `429`),

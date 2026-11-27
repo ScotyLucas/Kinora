@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the native parts: media controls, notifications, widgets, app shortcuts -->
+<resources>
+    <string name="channel_playback">Lejátszás</string>
+    <string name="channel_notifications">Értesítések</string>
+    <string name="media_rewind">Vissza 10 másodpercet</string>
+    <string name="media_pause">Szünet</string>
+    <string name="media_play">Lejátszás</string>
+    <string name="media_forward">Előre 10 másodpercet</string>
+    <string name="widget_continue">Folytatás</string>
+    <string name="widget_new">Új a könyvtárban</string>
+    <string name="widget_journal">Napló</string>
+    <string name="widget_continue_desc">Amit épp nézel</string>
+    <string name="widget_new_desc">A könyvtár legújabb címei</string>
+    <string name="widget_journal_desc">Amit ebben a hónapban néztél</string>
+    <string name="widget_open">Nyisd meg a Kinorát a bejelentkezéshez</string>
+    <string name="widget_empty">Még nincs itt semmi</string>
+    <string name="shortcut_resume">Folytatás</string>
+    <string name="shortcut_resume_long">Az utolsó cím folytatása</string>
+    <string name="shortcut_search">Keresés</string>
+    <string name="shortcut_downloads">Letöltések</string>
+    <plurals name="widget_viewings">
+        <item quantity="one">megtekintés ebben a hónapban</item>
+        <item quantity="other">megtekintés ebben a hónapban</item>
+    </plurals>
+    <plurals name="widget_hours">
+        <item quantity="one">%d óra</item>
+        <item quantity="other">%d óra</item>
+    </plurals>
+</resources>
