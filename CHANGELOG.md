@@ -5,6 +5,8 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.99 – 2026-11-28
+
 - **Javítás (Windows, Intel):** Windowson az Intel Quick Sync (QSV) hardveres kódolás akkor is működik, ha a gépben
   több videokártya van, vagy ha a Kinora szolgáltatásként fut. A szerver előbb az Intel kártyán nyit D3D11-eszközt, és
   több beállítást kipróbál; ha a hardveres kódolás nem működik, az oka alap naplószinten is látszik.
