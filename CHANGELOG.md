@@ -5,6 +5,8 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.97 – 2026-11-27
+
 - **Új (web, iPhone, iPad, Apple TV, Android):** idővonal-előnézet. A szerver tíz másodpercenként egy kis képet készít a
   filmekről és epizódokról (akkor dolgozik, amikor senki nem néz semmit; a megnyitott cím előre kerül), a lejátszó pedig
   tekerés közben megmutatja, hova ugrasz: weben az idővonal fölé víve az egeret vagy húzáskor, a ±10 másodperces
@@ -27,6 +29,8 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
   haptics on the player's buttons; the party link through the system share sheet; `kinora://` links. On Android TV what
   you are watching shows in the "Play next" row. Notifications without Google services: the server keeps them and the
   app fetches them every quarter of an hour; turn them on, by category, on the Account page.
+- **Eltávolítva (iPhone, iPad):** a próbaértesítés gombja a beállításokban. Az iOS-alkalmazás 1.1.97-es.
+- **Removed (iPhone, iPad):** the test notification button in settings. The iOS app is 1.1.97.
 
 ## 1.1.96 – 2026-11-26
 
