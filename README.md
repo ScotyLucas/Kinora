@@ -67,7 +67,7 @@ Minden beállítás megadható környezeti változóval is. Ilyenkor az admin fe
 | `KINORA_ADDR` | `:8096` | figyelt cím |
 | `KINORA_DATA` | `/config` (natívan `./data`) | adatbázis, képek |
 | `KINORA_CACHE` | `/cache` (natívan `<data>/cache`) | átkódolás, letöltések |
-| `KINORA_PUBLIC_URL` | – | nyilvános cím (meghívó linkekhez, QR-kódokhoz) |
+| `KINORA_PUBLIC_URL` | – | nyilvános cím (meghívó linkekhez, QR-kódokhoz, a linkelőnézet képéhez) |
 | `KINORA_TMDB_KEY` | – | TMDB API kulcs (v3 kulcs vagy v4 token) |
 | `KINORA_TMDB_API` | `https://api.themoviedb.org/3` | TMDB API-cím (proxy vagy tükör esetén) |
 | `KINORA_METADATA_LANG` | `hu-HU` | alapértelmezett metaadat-nyelv (a kliensek a saját felületi nyelvükön kapják a címeket, ha az eltér) |

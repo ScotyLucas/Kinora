@@ -271,6 +271,8 @@ public extension KinoraClient {
         return req
     }
 
-    /// The web player's join link, for people without the app.
-    func partyWebLink(_ code: String) -> URL? { URL(string: baseURL + "/#/party/\(code)") }
+    /// The web player's join link, for people without the app. A path rather than the
+    /// player's #/party/ route, so chat apps can show a preview; the server sends the
+    /// browser on to the route.
+    func partyWebLink(_ code: String) -> URL? { URL(string: baseURL + "/party/\(code)") }
 }

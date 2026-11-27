@@ -326,7 +326,7 @@ async function route() {
   if (!state.me) await loadMe();
   snow();
   if (!state.me) {
-    if (p0 !== 'login') { if (p0 === 'quickconnect') rememberAfter(location.hash); return go('#/login'); }
+    if (p0 !== 'login') { if (p0 === 'quickconnect' || p0 === 'party') rememberAfter(location.hash); return go('#/login'); } // a shared party link survives the login
     const code = state.status.quickconnect_enabled && (p1 === 'code' || (TV && p1 !== 'password'));
     return code ? viewLoginCode() : viewLogin();
   }
@@ -334,7 +334,7 @@ async function route() {
   // the first-run wizard comes right after the admin account, before any profile is picked
   if (p0 === 'setup') return state.me.user.is_admin ? viewWizard(p1) : go('#/home');
   if (p0 === 'quickconnect' && state.me.profile) return viewQuickConnect(q.get('code') || '');
-  if (p0 === 'quickconnect') rememberAfter(location.hash);
+  if ((p0 === 'quickconnect' || p0 === 'party') && !state.me.profile) rememberAfter(location.hash);
   if (p0 === 'profiles' || !state.me.profile) return viewProfiles(p1 === 'edit');
   if (DEV) deviceSync();
   try {
@@ -3370,7 +3370,7 @@ function partyClient(code, player, stage, p) {
   const status = h('div.status');
   const everyone = h('input', { type: 'checkbox' });
   const msg = h('input', { type: 'text', maxlength: 500, placeholder: T.partyChatPh, 'aria-label': T.partyChatPh });
-  const link = location.origin + '/#/party/' + code;
+  const link = location.origin + '/party/' + code; // a path, so chat apps can show a preview (the server sends the browser on to #/party/)
   const reacts = h('div.reacts');
   panel.append(
     h('button.btn.danger.party-leave', { onclick: () => p.leave() }, icon('back'), T.partyLeave),
@@ -3772,7 +3772,7 @@ async function adminUsers(body) {
 async function adminInvites(body) {
   const invs = await GET('/api/admin/invites');
   const base = (await GET('/api/admin/settings')).values.public_url || location.origin;
-  const linkOf = c => base + '/#/join/' + c;
+  const linkOf = c => base.replace(/\/+$/, '') + '/join/' + c; // a path: chat apps show a preview
   put(body, aHead(T.aInvites, T.aLedeInvites, invs.length > 0 && h('button.btn.primary', { onclick: newInv }, icon('plus'), T.newInvite)),
     invs.length ? h('div.a-list', null, invs.map(i => h('div.entry.a-invite' + (i.uses_left > 0 ? '' : '.spent'), null,
       qrImg(linkOf(i.code)),

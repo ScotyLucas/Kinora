@@ -5,6 +5,19 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Új:** linkelőnézet. A szerver Open Graph-címkéket ad a megosztott linkekhez; ezekből mutat címet és képet például az
+  iMessage, a WhatsApp vagy a Discord – ha a szerver az internetről elérhető. A watch party linkje (`/party/KÓD`) a film vagy epizód címét és borítóját mutatja, amíg a party
+  tart; a meghívó linkje (`/join/KÓD`) a szerver nevét, a meghívó megjegyzését nem. Minden más link a szerver nevét és
+  ikonját. A kép címe a `KINORA_PUBLIC_URL` (nyilvános cím) alapján készül, ha be van állítva. A web és az iPhone/iPad
+  app ilyen linket ad tovább; a régi `#/party/` és `#/join/` linkek továbbra is működnek. A bejelentkezés nélkül
+  megnyitott party link bejelentkezés és profilválasztás után a partyba visz.
+- **New:** link previews. The server gives shared links Open Graph tags, from which apps such as iMessage, WhatsApp or
+  Discord show a title and a picture – when the server can be reached from the internet. A watch party link (`/party/CODE`) shows the film or episode title and its poster while the party is
+  open; an invite link (`/join/CODE`) shows the server's name, never the invite's note. Every other link shows the
+  server's name and icon. The picture's address uses `KINORA_PUBLIC_URL` (the public address) when it is set. The web
+  client and the iPhone/iPad app share these links; the old `#/party/` and `#/join/` links still work. A party link
+  opened while signed out takes you into the party after you sign in and pick a profile.
+
 ## 1.1.97 – 2026-11-27
 
 - **Új (web, iPhone, iPad, Apple TV, Android):** idővonal-előnézet. A szerver tíz másodpercenként egy kis képet készít a

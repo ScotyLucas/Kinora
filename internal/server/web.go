@@ -40,8 +40,20 @@ func (s *Server) webHandler() http.Handler {
 			p = "index.html"
 			r.URL.Path = "/"
 		}
+		if p == "index.html" {
+			// the shell carries the server's link-preview tags (preview.go)
+			page, err := s.indexWithMeta(root, r)
+			if err != nil {
+				http.Error(w, "a webes felület nem érhető el", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Write(page)
+			return
+		}
 		switch {
-		case dev || p == "index.html":
+		case dev:
 			w.Header().Set("Cache-Control", "no-cache")
 		case strings.HasPrefix(p, "vendor/"):
 			w.Header().Set("Cache-Control", "public, max-age=604800")
