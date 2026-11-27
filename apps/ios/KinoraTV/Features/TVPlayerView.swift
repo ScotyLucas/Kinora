@@ -99,7 +99,7 @@ struct TVPlayerView: View {
                 Spacer()
                 promptButtons
             }
-            TVTimeline(player: player, focused: focus == .timeline, showEnd: showEnd)
+            TVTimeline(player: player, focused: focus == .timeline, showEnd: showEnd, preview: seekFlash != nil)
                 .opacity(chrome ? 1 : 0)
                 .focusable()
                 .focused($focus, equals: .timeline)
@@ -421,6 +421,8 @@ private struct TVTimeline: View {
     var player: PlayerModel
     var focused: Bool
     var showEnd: Bool
+    /// After a ±10 s press: the picture at the new position above the knob (trickplay).
+    var preview = false
 
     var body: some View {
         let d = player.duration
@@ -439,6 +441,14 @@ private struct TVTimeline: View {
                     Circle().fill(Theme.plasterBright)
                         .frame(width: focused ? 26 : 0, height: focused ? 26 : 0)
                         .offset(x: g.size.width * p - (focused ? 13 : 0))
+                }
+                .overlay(alignment: .topLeading) {
+                    if preview, let img = player.previewImage(at: player.position) {
+                        let w: CGFloat = 400, h = w * CGFloat(img.height) / CGFloat(max(img.width, 1))
+                        TrickplayPreview(image: img, time: TVPlayerView.clock(player.position), width: w)
+                            .offset(x: min(max(0, g.size.width * p - w / 2), max(0, g.size.width - w)), y: -h - 24)
+                            .transition(.opacity)
+                    }
                 }
             }
             .frame(height: focused ? 14 : 8)

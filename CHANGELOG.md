@@ -5,6 +5,16 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Új (web, iPhone, iPad, Apple TV, Android):** idővonal-előnézet. A szerver tíz másodpercenként egy kis képet készít a
+  filmekről és epizódokról (akkor dolgozik, amikor senki nem néz semmit; a megnyitott cím előre kerül), a lejátszó pedig
+  tekerés közben megmutatja, hova ugrasz: weben az idővonal fölé víve az egeret vagy húzáskor, a ±10 másodperces
+  ugrásnál is; iPhone-on és iPaden a csúszka húzásakor; Apple TV-n az ugrásnál. Az Androidos app a web lejátszóját
+  használja. Az admin Átkódolás oldalán kapcsolható ki („Idővonal-előnézet”), vagy a `KINORA_TRICKPLAY=0` változóval.
+- **New (web, iPhone, iPad, Apple TV, Android):** timeline preview. The server takes a small picture of films and
+  episodes every ten seconds (while nobody is watching anything; the title you open moves to the front), and the player
+  shows where you are going while you scrub: on the web when you hover over or drag the timeline, and on the ±10 second
+  jumps; on iPhone and iPad while you drag the slider; on Apple TV when you jump. The Android app uses the web player.
+  Turn it off on the admin Transcoding page ("Timeline preview") or with `KINORA_TRICKPLAY=0`.
 - **Új (Android):** kép a képben (gombbal, Android 12-től magától is, amikor kilépsz egy futó videóból), médiavezérlő az
   értesítések között és a zárképernyőn, a lejátszás a háttérben is megy; Chromecast a lejátszóból; widgetek (Folytatás,
   Új a könyvtárban, Napló); parancsikonok az ikonon (Folytatás, Keresés, Napló, Letöltések); rezgés a lejátszó

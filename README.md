@@ -88,6 +88,7 @@ Minden beállítás megadható környezeti változóval is. Ilyenkor az admin fe
 | `KINORA_LOGO` | – | logófájl (pl. `/config/logo.png`); induláskor átveszi, ha változott (PNG/JPG/WebP/SVG, max. 2 MB) |
 | `KINORA_INITIAL_SERVER_NAME`, `KINORA_INITIAL_LOGO`, `KINORA_INITIAL_MEDIA` | – | csak az **első** induláskor: szervernév, logó, kezdő médiamappák (`Név=/út;/út2`); utána az adminfelületen módosíthatók – ezeket a telepítők állítják be |
 | `KINORA_INTRO_DETECTION`, `KINORA_INTRO_WINDOW_MIN` | `1`, `10` | intró-/stáblista-felismerés be/ki, és hány percben keresse az intrót |
+| `KINORA_TRICKPLAY` | `1` | idővonal-előnézeti képek (10 másodpercenként egy kép) készítése be/ki |
 | `KINORA_JELLYFIN_COMPAT` | – | `1` = megnyitja a Jellyfin-kompatibilis API portját (az admin-beállítással együtt kapcsol be) |
 | `KINORA_JELLYFIN_ADDR` | `:8097` | a Jellyfin-kompatibilis API címe |
 | `KINORA_MAX_TRANSCODES` | – | egyszerre futó átkódolások felső korlátja az egész szerveren (fiókonként mindig legfeljebb 8) |

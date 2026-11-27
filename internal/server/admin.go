@@ -168,7 +168,7 @@ func (s *Server) handleInviteDelete(w http.ResponseWriter, r *http.Request, c *r
 // ------------------------------------------------------------------ settings
 
 var settingKeys = []string{"server_name", "public_url", "scan_interval_min", "tmdb_key", "metadata_lang", "encoder", "video_codec",
-	"quickconnect_enabled", "discovery_enabled", "brand_accent", "intro_detection", "intro_window_min",
+	"quickconnect_enabled", "discovery_enabled", "brand_accent", "intro_detection", "intro_window_min", "trickplay",
 	"opensubtitles_key", "opensubtitles_user", "opensubtitles_pass", "watch_region", "omdb_key", "push_enabled", "push_relay_url",
 	"jellyfin_compat"}
 
@@ -189,6 +189,7 @@ var SettingEnv = map[string]string{
 	"brand_accent":         "KINORA_ACCENT",
 	"intro_detection":      "KINORA_INTRO_DETECTION",
 	"intro_window_min":     "KINORA_INTRO_WINDOW_MIN",
+	"trickplay":            "KINORA_TRICKPLAY",
 	"opensubtitles_key":    "KINORA_OPENSUBTITLES_KEY",
 	"opensubtitles_user":   "KINORA_OPENSUBTITLES_USER",
 	"opensubtitles_pass":   "KINORA_OPENSUBTITLES_PASS",
@@ -277,7 +278,7 @@ func (s *Server) handleSettingsPatch(w http.ResponseWriter, r *http.Request, c *
 				writeErr(w, http.StatusBadRequest, "az intró keresési ablaka 2–30 perc lehet")
 				return
 			}
-		case "quickconnect_enabled", "discovery_enabled", "intro_detection", "push_enabled":
+		case "quickconnect_enabled", "discovery_enabled", "intro_detection", "push_enabled", "trickplay":
 			if v != "0" && v != "1" {
 				writeErr(w, http.StatusBadRequest, "a kapcsoló értéke 0 vagy 1 lehet")
 				return

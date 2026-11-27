@@ -350,6 +350,7 @@ private struct Scrubber: View {
             }
             .tint(Theme.amber)
             .overlay { ChapterTicks(chapters: player.chapters, duration: player.duration) }
+            .overlay(alignment: .topLeading) { preview }
             .accessibilityLabel(L("Lejátszási pozíció"))
             .accessibilityValue(PlayerView.clock(pos))
             HStack {
@@ -375,6 +376,21 @@ private struct Scrubber: View {
             }
             .font(.caption.monospacedDigit())
             .foregroundStyle(.white.opacity(0.8))
+        }
+    }
+
+    /// While the thumb is moved: the picture at that time above it (trickplay), kept on screen at both ends.
+    /// It goes by `scrub`, not `scrubbing`: iOS 26 does not always report that an edit began.
+    @ViewBuilder private var preview: some View {
+        if let t = scrub, let img = player.previewImage(at: t) {
+            GeometryReader { g in
+                let w = min(240, max(140, g.size.width * 0.3))
+                let h = w * CGFloat(img.height) / CGFloat(max(img.width, 1))
+                let x = g.size.width * t / max(player.duration, 1) - w / 2
+                TrickplayPreview(image: img, time: PlayerView.clock(t), width: w)
+                    .offset(x: min(max(0, x), max(0, g.size.width - w)), y: -h - 12)
+            }
+            .allowsHitTesting(false)
         }
     }
 

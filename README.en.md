@@ -84,6 +84,7 @@ All settings can also be provided through environment variables. When set this w
 | `KINORA_LOGO` | — | Logo file (for example `/config/logo.png`); adopted at startup when changed (PNG/JPG/WebP/SVG, max. 2 MB) |
 | `KINORA_INITIAL_SERVER_NAME`, `KINORA_INITIAL_LOGO`, `KINORA_INITIAL_MEDIA` | — | First launch only: server name, logo and initial media folders (`Name=/path;/path2`); can be changed later in the admin interface. Intended for installers. |
 | `KINORA_INTRO_DETECTION`, `KINORA_INTRO_WINDOW_MIN` | `1`, `10` | Enable/disable intro and credits detection, and the number of minutes to search for an intro |
+| `KINORA_TRICKPLAY` | `1` | Enable/disable timeline preview pictures (one picture every 10 seconds) |
 | `TZ`, `PUID`, `PGID` | `UTC`, `1000`, `1000` | Time zone and file owner IDs |
 
 ### Which image should I use?

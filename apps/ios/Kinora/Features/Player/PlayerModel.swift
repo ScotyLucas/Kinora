@@ -1,5 +1,7 @@
 import AVKit
+import ImageIO
 import MediaPlayer
+import SwiftUI
 import KinoraKit
 
 /// One playback: asks the server how to play, drives AVPlayer, reports progress,
@@ -76,6 +78,12 @@ final class PlayerModel: NSObject {
     private var resumedAt: Double?
     private var ended = false
     private var closed = false
+    /// Timeline preview pictures (trickplay); nil until the server has made them.
+    private(set) var trickplay: TrickplayManifest?
+    /// The sheets as JPEG data (small); a sheet is decoded only while it is being shown.
+    private(set) var trickplaySheets: [Int: Data] = [:]
+    @ObservationIgnored private var decodedSheets: [(n: Int, image: CGImage)] = []
+    @ObservationIgnored private var trickplayLoad: Task<Void, Never>?
     private var restoring = false
     private var skipped = Set<Double>()
     private var lastReport = Date.distantPast
@@ -175,6 +183,7 @@ final class PlayerModel: NSObject {
     func close() {
         guard !closed else { return }
         closed = true
+        trickplayLoad?.cancel()
         report(ended: ended)
         stopSession()
         HomeScenes.shared.stopped()
@@ -275,6 +284,7 @@ final class PlayerModel: NSObject {
             }
             updateNowPlaying()
             loadNowPlayingArtwork()
+            loadTrickplay()
         } catch is CancellationError {
             if generation == startGeneration { requesting = false }
         } catch {
@@ -805,5 +815,78 @@ extension PlayerModel: AVPictureInPictureControllerDelegate {
             if !presented && !restoring { close() }
             restoring = false
         }
+    }
+}
+
+// MARK: - trickplay
+
+extension PlayerModel {
+    /// Fetches the preview sheets once. A file just added may still be in the server's queue (opening it
+    /// moves it to the front), so it is asked for again a few times while the player is open.
+    fileprivate func loadTrickplay() {
+        guard trickplayLoad == nil, trickplay == nil else { return }
+        let c = client, id = item.id
+        trickplayLoad = Task { [weak self] in
+            for _ in 0..<8 {
+                if Task.isCancelled { return }
+                do {
+                    if let m = try await c.trickplay(id) {
+                        guard let self, !self.closed else { return }
+                        self.trickplay = m
+                        for n in 0..<m.sheets {
+                            if let d = try? await c.data(m.sheetPath(item: id, sheet: n)) { self.trickplaySheets[n] = d }
+                        }
+                        return
+                    }
+                } catch {
+                    return // offline, or a server without trickplay
+                }
+                try? await Task.sleep(for: .seconds(15))
+            }
+        }
+    }
+
+    /// The preview picture for a time, or nil (none made yet, or its sheet is still loading).
+    func previewImage(at t: Double) -> CGImage? {
+        guard let m = trickplay, let f = m.frame(at: t), let data = trickplaySheets[f.sheet] else { return nil }
+        let sheet: CGImage
+        if let hit = decodedSheets.first(where: { $0.n == f.sheet }) {
+            sheet = hit.image
+        } else {
+            guard let src = CGImageSourceCreateWithData(data as CFData, nil),
+                  let img = CGImageSourceCreateImageAtIndex(src, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+            else { return nil }
+            // two decoded sheets at most: a long film has a dozen, each tens of megabytes decoded
+            decodedSheets = [(f.sheet, img)] + decodedSheets.prefix(1)
+            sheet = img
+        }
+        return sheet.cropping(to: CGRect(x: f.x, y: f.y, width: f.width, height: f.height))
+    }
+}
+
+/// The picture above the timeline while scrubbing, with the time on its lower edge.
+struct TrickplayPreview: View {
+    var image: CGImage
+    var time: String
+    var width: CGFloat
+
+    var body: some View {
+        let h = width * CGFloat(image.height) / CGFloat(max(image.width, 1))
+        Image(decorative: image, scale: 1)
+            .resizable()
+            .interpolation(.medium)
+            .frame(width: width, height: h)
+            .overlay(alignment: .bottom) {
+                Text(time)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(.black.opacity(0.6), in: Capsule())
+                    .padding(.bottom, 4)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.35), lineWidth: 1))
+            .shadow(color: .black.opacity(0.5), radius: 8)
+            .accessibilityHidden(true)
     }
 }

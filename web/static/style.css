@@ -866,6 +866,11 @@ label.switch-row > span { color: var(--t0); }
 @media (hover: none) { .timeline .knob { scale: 1; } }
 .timeline .chap { position: absolute; top: calc((var(--mark) - var(--rail-hi)) / 2); width: var(--frame); height: var(--rail-hi); background: var(--screen); }
 .timeline .hover-t { position: absolute; bottom: calc(var(--mark) + var(--s1)); transform: translateX(-50%); background: var(--g2); border: var(--hair) solid var(--rule-hi); padding: var(--s1) var(--s2); border-radius: var(--r1); font-family: var(--text); font-size: var(--f1); font-weight: 700; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.timeline .tp { position: absolute; bottom: calc(var(--mark) + var(--s1)); transform: translateX(-50%); width: calc(var(--tp-w, 320) * 1px * var(--tp-scale)); height: calc(var(--tp-h, 180) * 1px * var(--tp-scale)); overflow: hidden; border-radius: var(--r1); border: var(--hair) solid var(--rule-hi); background: var(--g2); pointer-events: none; --tp-scale: .6; }
+.timeline .tp-pic { transform: scale(var(--tp-scale)); transform-origin: 0 0; background-repeat: no-repeat; }
+@media (min-width: 900px) { .timeline .tp { --tp-scale: .75; } }
+@media (min-width: 1600px) { .timeline .tp { --tp-scale: 1; } }
+.timeline .hover-t.with-tp { bottom: calc(var(--mark) + var(--s1) + var(--s1)); }
 .timeline:hover .rail, .timeline:hover .ready, .timeline:hover .done, .timeline:focus-visible .rail, .timeline:focus-visible .ready, .timeline:focus-visible .done { height: var(--rail-hi); top: calc((var(--mark) - var(--rail-hi)) / 2); }
 .timeline:focus-visible { outline-offset: var(--s1); }
 /* volume: the slider slides out of the speaker button on hover or keyboard focus */

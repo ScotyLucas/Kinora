@@ -2625,7 +2625,8 @@ async function viewPlayer(id, q) {
   let showEnd = localStorage.getItem('kinora-endtime') === '1';
   remEl.onclick = e => { e.stopPropagation(); showEnd = !showEnd; try { localStorage.setItem('kinora-endtime', showEnd ? '1' : ''); } catch { /* private mode */ } paintTimeline(); };
   const rail = h('div.rail'), ready = h('div.ready'), done = h('div.done'), knob = h('div.knob'), hoverT = h('div.hover-t.hidden');
-  const timeline = h('div.timeline', { role: 'slider', tabindex: 0, 'aria-label': T.timeline, 'aria-valuemin': 0 }, rail, ready, done, knob, hoverT);
+  const tpPic = h('div.tp-pic', { 'aria-hidden': 'true' }), tpWrap = h('div.tp.hidden', null, tpPic); // trickplay preview above the time
+  const timeline = h('div.timeline', { role: 'slider', tabindex: 0, 'aria-label': T.timeline, 'aria-valuemin': 0 }, rail, ready, done, knob, tpWrap, hoverT);
   const playBtn = h('button.p-btn.p-main', { 'aria-label': T.play }, icon('play'));
   const bigPlay = h('button.p-big', { 'aria-label': T.play, onclick: () => togglePlay() }, icon('play')); // paused: a large target in the middle of the picture
   const volBtn = h('button.p-btn', { 'aria-label': T.mute }, icon('vol'));
@@ -2709,6 +2710,7 @@ async function viewPlayer(id, q) {
     // the server sends chapters with Go field names (Start, Title)
     r.chapters = (r.chapters || []).map(c => ({ start: c.start ?? c.Start ?? 0, title: c.title ?? c.Title ?? '' }));
     info = r; mode = r.mode; session = r.session || null; offset = r.start_offset || 0;
+    if (!tp && !tpTimer) loadTrickplay();
     duration = r.duration || 0; credits = r.credits_start ?? null;
     segments = r.segments || [];
     const cr = segments.find(g => g.type === 'credits');
@@ -3052,18 +3054,60 @@ async function viewPlayer(id, q) {
     if (!duration) return;
     for (const c of info.chapters || []) if (c.start > 1) timeline.append(h('div.chap', { title: c.title, style: { left: (c.start / duration * 100) + '%' } }));
   }
+  // trickplay: the server makes a picture every few seconds, laid out on sheets; while they are being
+  // made (a new item jumps the queue when it is opened) the manifest is asked for again a few times
+  let tp = null, tpTries = 0, tpTimer = 0, tpHide = 0;
+  async function loadTrickplay() {
+    if (dead || tp || tpTries++ > 8) return;
+    const r = await GET(`/api/items/${id}/trickplay`, { quiet: true, noRedirect: true }).catch(() => null);
+    if (dead) return;
+    if (r && r.ready && r.manifest && r.manifest.count > 0) {
+      tp = r.manifest;
+      tpPic.style.width = tp.width + 'px'; tpPic.style.height = tp.height + 'px';
+      tpWrap.style.setProperty('--tp-w', tp.width); tpWrap.style.setProperty('--tp-h', tp.height);
+      for (let n = 0; n < tp.sheets; n++) new Image().src = tpSheet(n); // warm the cache: dragging shows pictures at once
+    } else if (r) tpTimer = setTimeout(loadTrickplay, 15000);
+  }
+  const tpSheet = n => `/api/items/${id}/trickplay/${n}.jpg?v=${encodeURIComponent(tp.sig || '')}`;
+  function showPreview(t) {
+    if (!tp || casting) return;
+    const per = tp.cols * tp.rows, i = Math.max(0, Math.min(tp.count - 1, Math.round(t / tp.interval))), k = i % per;
+    tpPic.style.backgroundImage = `url("${tpSheet(Math.floor(i / per))}")`;
+    tpPic.style.backgroundPosition = `${-(k % tp.cols) * tp.width}px ${-Math.floor(k / tp.cols) * tp.height}px`;
+    tpWrap.classList.remove('hidden'); hoverT.classList.add('with-tp');
+    // kept inside the timeline at both ends, the time label rides on its lower edge
+    const w = timeline.clientWidth, half = tpWrap.offsetWidth / 2, x = Math.max(half, Math.min(w - half, t / (duration || 1) * w));
+    tpWrap.style.left = hoverT.style.left = x + 'px';
+  }
+  function hidePreview() { tpWrap.classList.add('hidden'); hoverT.classList.remove('with-tp'); }
+  // a remote's or keyboard's ±10 s on the focused timeline shows the picture there for a moment
+  function flashPreview(t) {
+    if (!tp) return;
+    hoverT.classList.remove('hidden'); hoverT.textContent = fmtTime(t); showPreview(t);
+    clearTimeout(tpHide); tpHide = setTimeout(() => { hidePreview(); hoverT.classList.add('hidden'); }, 1500);
+  }
+  onCleanup(() => { clearTimeout(tpTimer); clearTimeout(tpHide); });
   const tAt = e => { const r = timeline.getBoundingClientRect(); return Math.max(0, Math.min(1, ((e.clientX ?? e.touches?.[0]?.clientX) - r.left) / r.width)) * duration; };
-  timeline.addEventListener('pointerdown', e => { dragging = true; timeline.setPointerCapture(e.pointerId); });
+  timeline.addEventListener('pointerdown', e => { dragging = true; timeline.setPointerCapture(e.pointerId); if (e.pointerType !== 'mouse') { hoverT.classList.remove('hidden'); showPreview(tAt(e)); } });
   timeline.addEventListener('pointermove', e => {
     const t = tAt(e);
+    if (e.pointerType !== 'mouse' && !dragging) return; // a finger only previews while it drags
     hoverT.classList.remove('hidden'); hoverT.style.left = (t / (duration || 1) * 100) + '%';
     const ch = (info?.chapters || []).filter(c => c.start <= t).pop();
     hoverT.textContent = fmtTime(t) + (ch && ch.title ? ' · ' + ch.title : '');
+    showPreview(t);
     if (dragging) { done.style.width = knob.style.left = (t / (duration || 1) * 100) + '%'; }
   });
-  timeline.addEventListener('pointerleave', () => hoverT.classList.add('hidden'));
-  timeline.addEventListener('pointerup', e => { if (dragging) { dragging = false; userSeek(tAt(e)); } });
-  timeline.addEventListener('keydown', e => { if (e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); seekBy(-10); } if (e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); seekBy(10); } });
+  timeline.addEventListener('pointerleave', () => { if (!dragging) { hoverT.classList.add('hidden'); hidePreview(); } });
+  timeline.addEventListener('pointerup', e => { if (dragging) { dragging = false; userSeek(tAt(e)); } if (e.pointerType !== 'mouse') { hoverT.classList.add('hidden'); hidePreview(); } });
+  timeline.addEventListener('pointercancel', () => { dragging = false; hoverT.classList.add('hidden'); hidePreview(); });
+  timeline.addEventListener('keydown', e => {
+    const d = e.key === 'ArrowLeft' ? -10 : e.key === 'ArrowRight' ? 10 : 0;
+    if (!d) return;
+    e.preventDefault(); e.stopPropagation();
+    const to = Math.max(0, Math.min(duration || 0, pos() + d));
+    seekBy(d); flashPreview(to);
+  });
   playBtn.onclick = togglePlay;
   video.addEventListener('click', togglePlay);
   video.addEventListener('dblclick', toggleFS);
@@ -4006,6 +4050,7 @@ async function adminTranscode(body) {
       h('dl.side-info.a-facts', null, h('dt', null, T.selectedEnc), h('dd', null, srv(d.encoder_selected.label)), h('dt', null, T.tonemap), h('dd', null, d.tonemap ? T.yes : T.no)),
       settingsForm(s.values, s.env, [['encoder', T.encSetting, 'select', encOpts], ['video_codec', T.codecSetting, 'select', codecOpts]], () => adminTranscode(body))),
     await segmentsPanel(s),
+    await trickplayPanel(s),
     aSec(T.encTest, T.encTestHint, btn, tbl));
 }
 
@@ -4019,6 +4064,17 @@ async function segmentsPanel(s) {
       st.running && [h('dt', null, T.segRunning), h('dd', null, st.running)],
       st.last_error && [h('dt', null, T.lastError), h('dd.bad.small', null, srv(st.last_error))]),
     settingsForm(s.values, s.env, [['intro_detection', T.segDetection, 'toggle'], ['intro_window_min', T.segWindow, 'number']]));
+}
+
+async function trickplayPanel(s) {
+  const st = await GET('/api/admin/trickplay').catch(() => null);
+  return aSplit(T.aTrickplay, T.tpHint,
+    st && h('dl.side-info.a-facts', null,
+      h('dt', null, T.status), h('dd', null, T.tpStats(st.ready || 0, st.queue || 0)),
+      st.running ? [h('dt', null, T.segRunning), h('dd', null, T.tpWorking)] : null,
+      st.last_error && [h('dt', null, T.lastError), h('dd.bad.small', null, srv(st.last_error))]),
+    st && !st.available && h('p.note-off', null, T.tpNoFfmpeg),
+    settingsForm(s.values, s.env, [['trickplay', T.tpEnabled, 'toggle']]));
 }
 
 async function adminMeta(body) {

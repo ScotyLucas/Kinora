@@ -111,6 +111,7 @@ Series monitoring (`series.go`) keeps the wanted-episode list from TMDB and sear
 <cache>/downloads/           offline downloads (*.mp4 + *.json)
 <cache>/subs/                converted WebVTT
 <cache>/fingerprints/        Chromaprint data for intro detection
+<cache>/trickplay/<item>/    timeline preview sheets (0.jpg…, manifest.json)
 ```
 
 ## Testing

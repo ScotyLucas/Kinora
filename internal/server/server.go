@@ -29,6 +29,7 @@ import (
 	"github.com/ScotyLucas/kinora/internal/push"
 	"github.com/ScotyLucas/kinora/internal/scanner"
 	"github.com/ScotyLucas/kinora/internal/store"
+	"github.com/ScotyLucas/kinora/internal/trickplay"
 )
 
 // Version is set at build time via -ldflags.
@@ -85,10 +86,11 @@ type Deps struct {
 	Downloads *media.Downloader
 	Party     *party.Hub
 	Meta      *meta.Fetcher
-	Intro     *intro.Analyzer     // skip intro / credits detection (nil = off)
-	OpenSubs  *meta.OpenSubtitles // subtitle search and download (created by New when nil)
-	Acquire   *acquire.Manager    // built-in acquisition (created by New when nil and Meta is set; main runs it)
-	Push      *push.Notifier      // iOS push through the relay (created by New when nil; main runs it)
+	Intro     *intro.Analyzer      // skip intro / credits detection (nil = off)
+	Trickplay *trickplay.Generator // timeline preview pictures (nil = off)
+	OpenSubs  *meta.OpenSubtitles  // subtitle search and download (created by New when nil)
+	Acquire   *acquire.Manager     // built-in acquisition (created by New when nil and Meta is set; main runs it)
+	Push      *push.Notifier       // iOS push through the relay (created by New when nil; main runs it)
 }
 
 // New builds the server and its routes.

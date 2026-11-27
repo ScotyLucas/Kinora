@@ -76,6 +76,9 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/items/{id}/langs", s.withProfile(s.handleTitleLangs))
 	m.HandleFunc("PUT /api/items/{id}/langs", s.withProfile(s.handleTitleLangsPut))
 	m.HandleFunc("GET /api/items/{id}/segments", s.withProfile(s.handleSegments))
+	m.HandleFunc("GET /api/items/{id}/trickplay", s.withProfile(s.handleTrickplay))
+	// sheets are <img> / native image loads: a session or a ?st= stream token
+	m.HandleFunc("GET /api/items/{id}/trickplay/{sheet}", s.media(false, s.handleTrickplaySheet))
 	m.HandleFunc("GET /api/stream/{id}", s.media(true, s.handleStream))
 	m.HandleFunc("GET /api/items/{id}/subtitles/{idx}", s.media(true, s.handleSubtitle))
 	m.HandleFunc("GET /api/items/{id}/subtitles/search", s.withProfile(s.handleSubtitleSearch))
@@ -125,6 +128,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/admin/party-reports", s.admin(s.handlePartyReports))
 	m.HandleFunc("DELETE /api/admin/party-reports/{id}", s.admin(s.handlePartyReportDelete))
 	m.HandleFunc("GET /api/admin/segments", s.admin(s.handleSegmentStatus))
+	m.HandleFunc("GET /api/admin/trickplay", s.admin(s.handleTrickplayStatus))
 	m.HandleFunc("POST /api/admin/segments/analyze", s.admin(s.handleSegmentAnalyze))
 	m.HandleFunc("PUT /api/items/{id}/segments/{type}", s.admin(s.handleSegmentSet))
 	m.HandleFunc("DELETE /api/items/{id}/segments/{type}", s.admin(s.handleSegmentDelete))

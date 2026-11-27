@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -30,6 +31,7 @@ import (
 	"github.com/ScotyLucas/kinora/internal/selfupdate"
 	"github.com/ScotyLucas/kinora/internal/server"
 	"github.com/ScotyLucas/kinora/internal/store"
+	"github.com/ScotyLucas/kinora/internal/trickplay"
 )
 
 func env(key, def string) string {
@@ -208,8 +210,25 @@ func run(ctx context.Context, cfg server.Config, log *slog.Logger) error {
 		analyzer.Kick()
 	}
 
+	// trickplay: preview pictures above the player's timeline, made in the background
+	thumbs := trickplay.New(st, ffmpeg, cfg.CacheDir, log)
+	thumbs.ToneMap = enc.ToneMap()
+	if _, err := exec.LookPath("nice"); err == nil && runtime.GOOS != "windows" {
+		thumbs.Nice = true
+	}
+	thumbs.Busy = func() bool { return len(mgr.Sessions()) > 0 }
+	thumbs.Enabled = func() bool { return st.Setting("trickplay") != "0" }
+	safe.Go(ctx, log, "trickplay", thumbs.Run)
+	prevScanned2 := sc.OnScanned
+	sc.OnScanned = func(libID int64) {
+		if prevScanned2 != nil {
+			prevScanned2(libID)
+		}
+		thumbs.Kick()
+	}
+
 	srv := server.New(cfg, st, log, server.Deps{Ctx: ctx, Scanner: sc, ImgDir: imgDir, Media: mgr, Encoders: enc,
-		Subs: media.NewSubtitles(cfg.CacheDir), Downloads: dl, Party: hub, Meta: fetcher, Intro: analyzer})
+		Subs: media.NewSubtitles(cfg.CacheDir), Downloads: dl, Party: hub, Meta: fetcher, Intro: analyzer, Trickplay: thumbs})
 	srv.ApplyStartupBranding()
 	safe.Go(ctx, log, "housekeeping", srv.Background)
 	safe.Go(ctx, log, "discovery", srv.RunDiscovery)
