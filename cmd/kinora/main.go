@@ -145,8 +145,14 @@ func run(ctx context.Context, cfg server.Config, log *slog.Logger) error {
 		for _, r := range res {
 			if r.OK {
 				log.Info("encoder ok", "encoder", r.Name, "ms", r.Ms)
+			} else if r.Hardware && !strings.Contains(r.Error, "nem tartalmazza") {
+				// ffmpeg has it but it failed: worth seeing without debug logging
+				log.Info("encoder unavailable", "encoder", r.Name, "reason", r.Error)
 			} else {
 				log.Debug("encoder unavailable", "encoder", r.Name, "reason", r.Error)
+			}
+			if r.Name == "h264_qsv" && r.OK {
+				log.Info("qsv device", "init", media.QSVInit())
 			}
 		}
 		log.Info("encoder selected", "encoder", enc.Pick(st.Setting("encoder")).Name, "tonemap", enc.ToneMap())

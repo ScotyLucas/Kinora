@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -71,11 +73,43 @@ type EncodeOpts struct {
 	GOP     bool   // constant 4 s GOP for HLS
 }
 
+// qsvInitCandidates are the ways to open an Intel Quick Sync device, best first.
+//
+// On Windows a bare "qsv=hw" lets the runtime pick the adapter and the D3D
+// flavour: on a machine with more than one adapter (an Intel iGPU next to an
+// NVIDIA/AMD card, or the Microsoft Basic Render Driver) it can open the wrong
+// one, and DXVA2/D3D9 does not work at all in a Windows service (session 0).
+// So on Windows we first open a D3D11 device on the Intel adapter
+// (vendor 0x8086) and derive the QSV device from it, the same way other media
+// servers do; the self-test keeps the first variant that actually encodes.
+func qsvInitCandidates(goos string) [][]string {
+	plain := []string{"-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"}
+	if goos != "windows" {
+		return [][]string{plain}
+	}
+	return [][]string{
+		{"-init_hw_device", "d3d11va=dx11:,vendor_id=0x8086", "-init_hw_device", "qsv=qs@dx11", "-filter_hw_device", "qs"},
+		{"-init_hw_device", "qsv=hw,child_device_type=d3d11va", "-filter_hw_device", "hw"},
+		plain,
+		{"-init_hw_device", "qsv=hw,child_device_type=dxva2", "-filter_hw_device", "hw"},
+	}
+}
+
+// qsvInit is the QSV device setup chosen by SelfTest (nil: the first candidate).
+var qsvInit atomic.Pointer[[]string]
+
+func qsvInitArgs() []string {
+	if p := qsvInit.Load(); p != nil {
+		return *p
+	}
+	return qsvInitCandidates(runtime.GOOS)[0]
+}
+
 // InitArgs are global args placed before -i (hardware device setup).
 func (e Encoder) InitArgs() []string {
 	switch e.Family() {
 	case "qsv":
-		return []string{"-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"}
+		return append([]string(nil), qsvInitArgs()...)
 	case "vaapi":
 		return []string{"-init_hw_device", "vaapi=va:" + VAAPIDevice, "-filter_hw_device", "va"}
 	}
@@ -192,11 +226,20 @@ func (e *Encoders) SelfTest(ctx context.Context) []EncoderResult {
 	listed := ffmpegList(ctx, "-encoders")
 	filters := ffmpegList(ctx, "-filters")
 	results := make([]EncoderResult, len(AllEncoders))
+	var qsvProbe *EncoderResult
+	if strings.Contains(listed, " h264_qsv ") {
+		r := probeQSV(ctx, qsvInitCandidates(runtime.GOOS))
+		qsvProbe = &r
+	}
 	var wg sync.WaitGroup
 	for i, enc := range AllEncoders {
 		results[i] = EncoderResult{Encoder: enc}
 		if !strings.Contains(listed, " "+enc.Name+" ") {
 			results[i].Error = "az ffmpeg nem tartalmazza ezt az encodert"
+			continue
+		}
+		if enc.Name == "h264_qsv" && qsvProbe != nil {
+			results[i] = *qsvProbe
 			continue
 		}
 		if enc.Family() == "vaapi" {
@@ -225,12 +268,45 @@ func ffmpegList(ctx context.Context, what string) string {
 	return string(out)
 }
 
+// probeQSV tries the QSV device setups in order with h264_qsv and keeps the
+// first that encodes, so hevc_qsv/av1_qsv and real transcodes use it too. When
+// none works, the first (preferred) variant stays and its error is reported.
+func probeQSV(ctx context.Context, candidates [][]string) EncoderResult {
+	enc, _ := encoderByName("h264_qsv")
+	var first EncoderResult
+	for i, dev := range candidates {
+		r := testEncoderWith(ctx, enc, dev)
+		if r.OK {
+			qsvInit.Store(&candidates[i])
+			return r
+		}
+		if i == 0 {
+			first = r
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	qsvInit.Store(&candidates[0])
+	if len(candidates) > 1 {
+		first.Error = fmt.Sprintf("%s (%d QSV-eszközbeállítás közül egyik sem működött)", first.Error, len(candidates))
+	}
+	return first
+}
+
+// QSVInit is the QSV device setup in use (for logs).
+func QSVInit() string { return strings.Join(qsvInitArgs(), " ") }
+
 func testEncoder(ctx context.Context, enc Encoder) EncoderResult {
+	return testEncoderWith(ctx, enc, enc.InitArgs())
+}
+
+func testEncoderWith(ctx context.Context, enc Encoder, dev []string) EncoderResult {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	opts := EncodeOpts{Bitrate: 2_000_000, Width: 1280, GOP: true}
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
-	args = append(args, enc.InitArgs()...)
+	args = append(args, dev...)
 	args = append(args, "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24", "-t", "1", "-vf", enc.Filter(opts))
 	args = append(args, enc.Args(opts)...)
 	args = append(args, "-f", "null", "-")
