@@ -5,6 +5,8 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.98 – 2026-11-28
+
 - **Új (web):** ország szerinti szűrés a Felfedezésben. Az „Ország” menüben választhatsz egy származási országot
   („Csak innen”), vagy kizárhatsz egyet („Kivéve”). Ha egy országot kizársz, a több ország közös gyártásai közül azok még
   megjelennek, amelyeknek van másik származási országuk is.
