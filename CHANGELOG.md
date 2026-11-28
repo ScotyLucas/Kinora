@@ -5,6 +5,8 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.101 – 2026-11-28
+
 - **Új (hardveres dekódolás):** ha a kódoló a videokártyán fut, a dekódolás és a méretezés is ott történik, így a
   processzor szinte nem dolgozik. Windowson az Intel Quick Sync (D3D11 vagy QSV), a Direct3D 12 és az NVIDIA CUDA,
   Linuxon a VAAPI, a QSV és a CUDA, Macen a VideoToolbox működik. Az indításkori önteszt kipróbálja, melyik út
