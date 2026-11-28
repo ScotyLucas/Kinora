@@ -36,6 +36,7 @@ type Session struct {
 	Title    string
 	Mode     string
 	Encoder  string
+	Decode   string // GPU decode pipeline, "" = CPU decoding
 	Start    float64
 	Dir      string
 	Started  time.Time
@@ -66,6 +67,7 @@ type SessionInfo struct {
 	Title   string `json:"title"`
 	Mode    string `json:"mode"`
 	Encoder string `json:"encoder"`
+	Decode  string `json:"decode,omitempty"`
 	UserID  int64  `json:"user_id"`
 	Running bool   `json:"running"`
 	Seconds int    `json:"seconds"`
@@ -88,6 +90,9 @@ type Manager struct {
 	sess map[string]*Session
 	// MaxSessions limits sessions across all users (0 = no limit; KINORA_MAX_TRANSCODES).
 	MaxSessions int
+	// EncoderSetting returns the "encoder" setting; with auto ("" too) a session
+	// may move to another GPU family that decodes the source on the card.
+	EncoderSetting func() string
 }
 
 // NewManager creates the manager and wipes leftovers of previous runs.
@@ -104,7 +109,7 @@ func (m *Manager) Sessions() []SessionInfo {
 	defer m.mu.Unlock()
 	out := []SessionInfo{}
 	for _, s := range m.sess {
-		out = append(out, SessionInfo{ID: s.ID, ItemID: s.ItemID, Title: s.Title, Mode: s.Mode, Encoder: s.Encoder, UserID: s.UserID,
+		out = append(out, SessionInfo{ID: s.ID, ItemID: s.ItemID, Title: s.Title, Mode: s.Mode, Encoder: s.Encoder, Decode: s.Decode, UserID: s.UserID,
 			Running: !s.Finished(), Seconds: int(time.Since(s.Started).Seconds())})
 	}
 	return out
@@ -117,13 +122,21 @@ type HLSSpec struct {
 	Decision Decision
 	Start    float64
 	Encoder  Encoder
+	// GPU, when set, decodes and scales on the graphics card (from Manager.Start's plan).
+	GPU *GPUDecode
 }
 
 // BuildHLSArgs returns the ffmpeg command line for a session writing into dir.
 func BuildHLSArgs(sp HLSSpec, dir string) []string {
 	d := sp.Decision
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
-	if !d.VideoCopy {
+	gpu := sp.GPU
+	if d.VideoCopy || d.BurnSubIdx != nil || d.ToneMap {
+		gpu = nil // these need the frames on the CPU
+	}
+	if gpu != nil {
+		args = append(args, gpu.Pre...)
+	} else if !d.VideoCopy {
 		args = append(args, sp.Encoder.InitArgs()...)
 	}
 	if sp.Start > 0 {
@@ -144,7 +157,11 @@ func BuildHLSArgs(sp HLSSpec, dir string) []string {
 		args = append(args, "-filter_complex", fc, "-map", "[v]")
 		args = append(args, sp.Encoder.Args(opts)...)
 	} else {
-		args = append(args, "-map", "0:v:0", "-vf", sp.Encoder.Filter(opts))
+		vf := sp.Encoder.Filter(opts)
+		if gpu != nil {
+			vf = gpu.Filter(opts)
+		}
+		args = append(args, "-map", "0:v:0", "-vf", vf)
 		args = append(args, sp.Encoder.Args(opts)...)
 	}
 	if d.AudioIdx >= 0 {
@@ -171,7 +188,33 @@ func BuildHLSArgs(sp HLSSpec, dir string) []string {
 }
 
 // Start launches ffmpeg and waits (max 30 s) until the playlist has a segment.
+// When a GPU pipeline decodes the source, it is used; if that session fails
+// before its first segment, it is started again with CPU decoding and the
+// pipeline is not used for that source codec any more.
 func (m *Manager) Start(ctx context.Context, sp HLSSpec) (*Session, error) {
+	d := sp.Decision
+	src := codecName(sp.Item.VideoCodec)
+	orig := sp.Encoder
+	if !d.VideoCopy && sp.GPU == nil && m.Enc != nil {
+		auto := true
+		if m.EncoderSetting != nil {
+			v := m.EncoderSetting()
+			auto = v == "" || v == "auto"
+		}
+		sp.Encoder, sp.GPU = m.Enc.PlanGPU(sp.Encoder, src, d.ToneMap || d.BurnSubIdx != nil, auto)
+	}
+	s, err := m.start(ctx, sp)
+	if err != nil && sp.GPU != nil && ctx.Err() == nil && !errors.Is(err, ErrBusy) {
+		m.log.Warn("gpu decoding failed, retrying with cpu decoding", "item", sp.Item.Title, "pipeline", sp.GPU.Name,
+			"codec", src, "encoder", sp.Encoder.Name, "err", err)
+		m.Enc.MarkGPUBroken(sp.GPU.Name, src)
+		sp.GPU, sp.Encoder = nil, orig
+		return m.start(ctx, sp)
+	}
+	return s, err
+}
+
+func (m *Manager) start(ctx context.Context, sp HLSSpec) (*Session, error) {
 	if err := m.makeRoom(sp.UserID); err != nil {
 		return nil, err
 	}
@@ -188,6 +231,8 @@ func (m *Manager) Start(ctx context.Context, sp HLSSpec) (*Session, error) {
 		Encoder: sp.Encoder.Name, Start: sp.Start, Dir: dir, Started: time.Now(), cmd: cmd, done: make(chan struct{}), stderr: tb}
 	if sp.Decision.VideoCopy {
 		s.Encoder = "copy"
+	} else if sp.GPU != nil && !sp.Decision.ToneMap && sp.Decision.BurnSubIdx == nil {
+		s.Decode = sp.GPU.Name
 	}
 	s.touch()
 	m.log.Debug("ffmpeg", "args", strings.Join(args, " "))
@@ -216,7 +261,7 @@ func (m *Manager) Start(ctx context.Context, sp HLSSpec) (*Session, error) {
 	m.mu.Lock()
 	m.sess[id] = s
 	m.mu.Unlock()
-	m.log.Info("transcode started", "session", id, "item", sp.Item.Title, "mode", s.Mode, "encoder", s.Encoder, "start", sp.Start)
+	m.log.Info("transcode started", "session", id, "item", sp.Item.Title, "mode", s.Mode, "encoder", s.Encoder, "decode", firstNonEmpty(s.Decode, "cpu"), "start", sp.Start)
 
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {

@@ -155,9 +155,17 @@ func run(ctx context.Context, cfg server.Config, log *slog.Logger) error {
 				log.Info("qsv device", "init", media.QSVInit())
 			}
 		}
+		for _, g := range enc.GPUResults() {
+			if g.OK {
+				log.Info("gpu pipeline ok", "pipeline", g.Pipeline, "test", g.Codec)
+			} else {
+				log.Info("gpu pipeline unavailable", "pipeline", g.Pipeline, "test", g.Codec, "reason", g.Error)
+			}
+		}
 		log.Info("encoder selected", "encoder", enc.Pick(st.Setting("encoder")).Name, "tonemap", enc.ToneMap())
 	}()
 	mgr := media.NewManager(cfg.CacheDir, enc, log)
+	mgr.EncoderSetting = func() string { return st.Setting("encoder") }
 	if n, err := strconv.Atoi(os.Getenv("KINORA_MAX_TRANSCODES")); err == nil && n > 0 {
 		mgr.MaxSessions = n
 	}

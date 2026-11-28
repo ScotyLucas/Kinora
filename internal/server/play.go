@@ -122,8 +122,12 @@ func (s *Server) handlePlayback(w http.ResponseWriter, r *http.Request, c *reqCt
 		resp["encoder"] = "copy"
 		resp["encoder_label"] = "nincs videó-átkódolás (copy)"
 	} else {
+		if real, ok := media.EncoderByName(sess.Encoder); ok {
+			enc = real // the session may have moved to another GPU family
+		}
 		resp["encoder"] = enc.Name
 		resp["encoder_label"] = enc.Label
+		resp["decode"] = sess.Decode
 		resp["bitrate"] = d.Bitrate
 		resp["width"] = d.Width
 	}

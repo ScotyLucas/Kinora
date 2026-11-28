@@ -48,15 +48,18 @@ var VAAPIDevice = "/dev/dri/renderD128"
 var AllEncoders = []Encoder{
 	{"h264_nvenc", "NVIDIA NVENC", true, "h264"},
 	{"h264_qsv", "Intel Quick Sync (QSV)", true, "h264"},
+	{"h264_d3d12va", "Direct3D 12 (Windows, Intel/AMD/NVIDIA)", true, "h264"},
 	{"h264_vaapi", "VA-API (Intel/AMD)", true, "h264"},
 	{"h264_videotoolbox", "Apple VideoToolbox", true, "h264"},
 	{"h264_v4l2m2m", "V4L2 M2M (Raspberry Pi / ARM)", true, "h264"},
 	{"hevc_nvenc", "NVIDIA NVENC (HEVC)", true, "hevc"},
 	{"hevc_qsv", "Intel Quick Sync (HEVC)", true, "hevc"},
+	{"hevc_d3d12va", "Direct3D 12 (HEVC)", true, "hevc"},
 	{"hevc_vaapi", "VA-API (HEVC)", true, "hevc"},
 	{"hevc_videotoolbox", "Apple VideoToolbox (HEVC)", true, "hevc"},
 	{"av1_nvenc", "NVIDIA NVENC (AV1)", true, "av1"},
 	{"av1_qsv", "Intel Quick Sync (AV1)", true, "av1"},
+	{"av1_d3d12va", "Direct3D 12 (AV1)", true, "av1"},
 	{"av1_vaapi", "VA-API (AV1)", true, "av1"},
 	{"libx264", "Szoftveres (libx264, veryfast)", false, "h264"},
 }
@@ -121,6 +124,8 @@ func (e Encoder) InitArgs() []string {
 		return append([]string(nil), qsvInitArgs()...)
 	case "vaapi":
 		return []string{"-init_hw_device", "vaapi=va:" + VAAPIDevice, "-filter_hw_device", "va"}
+	case "d3d12va":
+		return []string{"-init_hw_device", "d3d12va=dx12", "-filter_hw_device", "dx12"}
 	}
 	return nil
 }
@@ -147,7 +152,7 @@ func (e Encoder) filter(o EncodeOpts, qsvUpload bool) string {
 		if qsvUpload {
 			f = append(f, "hwupload=extra_hw_frames=64")
 		}
-	case "vaapi":
+	case "vaapi", "d3d12va":
 		f = append(f, "format=nv12", "hwupload")
 	default:
 		f = append(f, "format=yuv420p")
@@ -190,6 +195,12 @@ func (e Encoder) Args(o EncodeOpts) []string {
 		a = append([]string{"-c:v", "hevc_qsv", "-preset", "veryfast", "-profile:v", "main"}, vbr...)
 	case "av1_qsv":
 		a = append([]string{"-c:v", "av1_qsv", "-preset", "veryfast"}, vbr...)
+	case "h264_d3d12va":
+		a = append([]string{"-c:v", "h264_d3d12va", "-profile:v", "high", "-rc_mode", "VBR"}, vbr...)
+	case "hevc_d3d12va":
+		a = append([]string{"-c:v", "hevc_d3d12va", "-profile:v", "main", "-rc_mode", "VBR"}, vbr...)
+	case "av1_d3d12va":
+		a = append([]string{"-c:v", "av1_d3d12va", "-rc_mode", "VBR"}, vbr...)
 	case "h264_vaapi":
 		a = append([]string{"-c:v", "h264_vaapi", "-profile:v", "high", "-rc_mode", "VBR"}, vbr...)
 	case "hevc_vaapi":
@@ -219,6 +230,9 @@ type Encoders struct {
 	results  []EncoderResult
 	testedAt time.Time
 	toneMap  bool
+	// gpu: GPU decode pipelines that passed (see hwdecode.go)
+	gpu        gpuState
+	gpuResults []GPUPipelineResult
 }
 
 // NewEncoders creates an empty registry (call SelfTest).
@@ -262,6 +276,11 @@ func (e *Encoders) SelfTest(ctx context.Context) []EncoderResult {
 			results[i].Skipped = true
 			continue
 		}
+		if enc.Family() == "d3d12va" && runtime.GOOS != "windows" {
+			results[i].Error = "a Direct3D 12 csak Windowson érhető el"
+			results[i].Skipped = true
+			continue
+		}
 		if enc.Name == "h264_qsv" && qsvProbe != nil {
 			results[i] = *qsvProbe
 			continue
@@ -284,6 +303,7 @@ func (e *Encoders) SelfTest(ctx context.Context) []EncoderResult {
 	e.testedAt = time.Now()
 	e.toneMap = strings.Contains(filters, " zscale ") && strings.Contains(filters, " tonemap ")
 	e.mu.Unlock()
+	e.gpuSelfTest(ctx, listed, filters, results)
 	return results
 }
 
@@ -372,6 +392,9 @@ func (e *Encoders) okNames() map[string]bool {
 	}
 	return ok
 }
+
+// EncoderByName finds an encoder of AllEncoders.
+func EncoderByName(n string) (Encoder, bool) { return encoderByName(n) }
 
 func encoderByName(n string) (Encoder, bool) {
 	for _, enc := range AllEncoders {

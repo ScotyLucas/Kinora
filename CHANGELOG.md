@@ -5,6 +5,14 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+- **Új (hardveres dekódolás):** ha a kódoló a videokártyán fut, a dekódolás és a méretezés is ott történik, így a
+  processzor szinte nem dolgozik. Windowson az Intel Quick Sync (D3D11 vagy QSV), a Direct3D 12 és az NVIDIA CUDA,
+  Linuxon a VAAPI, a QSV és a CUDA, Macen a VideoToolbox működik. Az indításkori önteszt kipróbálja, melyik út
+  működik a H.264, a HEVC és az AV1 forrásokkal. Ha egy út lejátszás közben hibát ad, a szerver processzoros
+  dekódolással újraindítja az átkódolást. Feliratbeégetésnél és HDR→SDR tónusleképezésnél a dekódolás továbbra is
+  a processzoron fut.
+- **Új (Windows):** Direct3D 12 hardveres kódolók (H.264, HEVC, AV1) Intel, AMD és NVIDIA kártyákhoz.
+
 ## 1.1.100 – 2026-11-28
 
 - **Javítás (Windows, Intel Arc):** az Intel Arc B580 (és minden olyan gép, ahol a képkockák feltöltése a videokártyára

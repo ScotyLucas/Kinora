@@ -3,6 +3,8 @@ package media
 import (
 	"strings"
 	"testing"
+
+	"github.com/ScotyLucas/kinora/internal/store"
 )
 
 func TestQSVInitCandidates(t *testing.T) {
@@ -93,5 +95,79 @@ func TestQSVSystemMemoryMode(t *testing.T) {
 	}
 	if QSVInit() != "system memory (no hwupload)" {
 		t.Fatalf("QSVInit = %q", QSVInit())
+	}
+}
+
+func TestGPUFilterExpressions(t *testing.T) {
+	g := &GPUDecode{Name: "x", scale: gpuPipelines()[1].scale} // qsv
+	if f := g.Filter(EncodeOpts{Width: 1280}); f != "scale_qsv=w='min(1280,iw)':h='trunc(ow/a/2)*2':format=nv12" {
+		t.Fatalf("qsv filter = %q", f)
+	}
+	if f := g.Filter(EncodeOpts{}); f != "scale_qsv=w=iw:h=ih:format=nv12" {
+		t.Fatalf("qsv filter without scaling = %q", f)
+	}
+	for _, p := range gpuPipelines() {
+		if p.pre("h264") == nil {
+			t.Errorf("%s must decode h264", p.Name)
+		}
+	}
+}
+
+func TestPlanGPU(t *testing.T) {
+	e := NewEncoders()
+	pls := gpuPipelines()
+	idx := func(name string) int {
+		for i, p := range pls {
+			if p.Name == name {
+				return i
+			}
+		}
+		t.Fatalf("no pipeline %s", name)
+		return -1
+	}
+	e.gpu = gpuState{
+		decode: map[string]map[string]int{"d3d12va": {"h264": idx("d3d12"), "hevc": idx("d3d12")}, "qsv": {"h264": idx("qsv-d3d11")}},
+		encode: map[string]bool{"h264_qsv": true, "hevc_qsv": true, "h264_d3d12va": true, "hevc_d3d12va": true},
+		broken: map[string]bool{},
+	}
+	qsv, _ := encoderByName("h264_qsv")
+	hevcQSV, _ := encoderByName("hevc_qsv")
+	if enc, g := e.PlanGPU(qsv, "h264", false, true); enc.Name != "h264_qsv" || g == nil || g.Name != "qsv-d3d11" {
+		t.Fatalf("own family first: %s %+v", enc.Name, g)
+	}
+	if enc, g := e.PlanGPU(hevcQSV, "hevc", false, true); enc.Name != "hevc_d3d12va" || g == nil || g.Name != "d3d12" {
+		t.Fatalf("switch to D3D12 for hevc sources: %s %+v", enc.Name, g)
+	}
+	if enc, g := e.PlanGPU(hevcQSV, "hevc", false, false); enc.Name != "hevc_qsv" || g != nil {
+		t.Fatalf("an explicit encoder setting keeps its family: %s %+v", enc.Name, g)
+	}
+	if _, g := e.PlanGPU(qsv, "h264", true, true); g != nil {
+		t.Fatal("tone mapping / burn-in needs CPU frames")
+	}
+	if enc, g := e.PlanGPU(qsv, "vp9", false, true); enc.Name != "h264_qsv" || g != nil {
+		t.Fatalf("untested source codec keeps CPU decoding: %s %+v", enc.Name, g)
+	}
+	e.MarkGPUBroken("qsv-d3d11", "h264")
+	if enc, g := e.PlanGPU(qsv, "h264", false, true); enc.Name != "h264_d3d12va" || g == nil {
+		t.Fatalf("after a broken pipeline the next family: %s %+v", enc.Name, g)
+	}
+	sw, _ := encoderByName("libx264")
+	if _, g := e.PlanGPU(sw, "h264", false, true); g != nil {
+		t.Fatal("software encoder never gets a GPU pipeline")
+	}
+}
+
+func TestBuildHLSArgsGPU(t *testing.T) {
+	enc, _ := encoderByName("h264_qsv")
+	g := &GPUDecode{Name: "qsv", Pre: []string{"-hwaccel", "qsv"}, scale: gpuPipelines()[1].scale}
+	sp := HLSSpec{Item: &store.Item{Path: "in.mkv"}, Decision: Decision{Width: 1280, Bitrate: 4_000_000, AudioIdx: -1}, Encoder: enc, GPU: g}
+	a := strings.Join(BuildHLSArgs(sp, "/tmp/x"), " ")
+	if !strings.Contains(a, "-hwaccel qsv -i in.mkv") || !strings.Contains(a, "scale_qsv=") || strings.Contains(a, "hwupload") {
+		t.Fatalf("gpu args: %s", a)
+	}
+	sp.Decision.ToneMap = true
+	a = strings.Join(BuildHLSArgs(sp, "/tmp/x"), " ")
+	if strings.Contains(a, "-hwaccel") || strings.Contains(a, "scale_qsv") {
+		t.Fatalf("tone mapping must use CPU frames: %s", a)
 	}
 }
