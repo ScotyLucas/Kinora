@@ -218,15 +218,62 @@ func CreditsStart(ch []Chapter, duration float64) *float64 {
 // LastLine returns the last non-empty line (ffmpeg's real error is usually there).
 func LastLine(s string) string { return lastLine(s) }
 
-func lastLine(s string) string {
-	lines := strings.Split(strings.TrimSpace(s), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if l := strings.TrimSpace(lines[i]); l != "" {
-			return l
+// ffmpegTrailers are the generic lines ffmpeg prints after the real error
+// (ffmpeg 7+ ends every failed run with "Nothing was written…"); they say
+// nothing about what went wrong.
+var ffmpegTrailers = []string{
+	"Nothing was written into output file",
+	"Conversion failed!",
+	"Error opening output files",
+	"Error opening output file",
+	"Terminating thread with return code",
+	"Task finished with error code",
+}
+
+func isTrailer(l string) bool {
+	for _, t := range ffmpegTrailers {
+		if strings.Contains(l, t) {
+			return true
 		}
+	}
+	return false
+}
+
+// errorLines are the last n non-empty lines of ffmpeg output that are not
+// generic trailers, oldest first. With only trailers it falls back to the last line.
+func errorLines(s string, n int) []string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	var out []string
+	last := ""
+	for i := len(lines) - 1; i >= 0 && len(out) < n; i-- {
+		l := strings.TrimSpace(lines[i])
+		if l == "" {
+			continue
+		}
+		if last == "" {
+			last = l
+		}
+		if !isTrailer(l) {
+			out = append([]string{l}, out...)
+		}
+	}
+	if len(out) == 0 && last != "" {
+		out = []string{last}
+	}
+	return out
+}
+
+// lastLine is the last meaningful line of ffmpeg output (skipping generic trailers).
+func lastLine(s string) string {
+	if l := errorLines(s, 1); len(l) > 0 {
+		return l[0]
 	}
 	return ""
 }
+
+// errorSummary joins the last few meaningful lines: the root cause is often a
+// line before "Error while opening encoder".
+func errorSummary(s string) string { return strings.Join(errorLines(s, 3), " | ") }
 
 func firstNonEmpty(a ...string) string {
 	for _, s := range a {

@@ -145,7 +145,7 @@ func run(ctx context.Context, cfg server.Config, log *slog.Logger) error {
 		for _, r := range res {
 			if r.OK {
 				log.Info("encoder ok", "encoder", r.Name, "ms", r.Ms)
-			} else if r.Hardware && !strings.Contains(r.Error, "nem tartalmazza") {
+			} else if r.Hardware && !r.Skipped {
 				// ffmpeg has it but it failed: worth seeing without debug logging
 				log.Info("encoder unavailable", "encoder", r.Name, "reason", r.Error)
 			} else {

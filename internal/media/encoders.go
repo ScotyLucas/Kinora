@@ -35,6 +35,8 @@ type EncoderResult struct {
 	OK    bool   `json:"ok"`
 	Ms    int64  `json:"ms"`
 	Error string `json:"error,omitempty"`
+	// Skipped: not tried at all (ffmpeg lacks it, or it can't exist on this OS).
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // VAAPIDevice is the render node used by h264_vaapi (KINORA_VAAPI_DEVICE).
@@ -82,16 +84,23 @@ type EncodeOpts struct {
 // So on Windows we first open a D3D11 device on the Intel adapter
 // (vendor 0x8086) and derive the QSV device from it, the same way other media
 // servers do; the self-test keeps the first variant that actually encodes.
+//
+// The last candidate is empty: no device and no hwupload, the encoder gets
+// nv12 frames in system memory and opens its own session. Some driver/ffmpeg
+// pairs (an Arc B580 on Windows, for one) encode fine but cannot create the
+// D3D11 frame pool hwupload needs ("Error initializing a child frames context").
 func qsvInitCandidates(goos string) [][]string {
 	plain := []string{"-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"}
+	memory := []string{}
 	if goos != "windows" {
-		return [][]string{plain}
+		return [][]string{plain, memory}
 	}
 	return [][]string{
 		{"-init_hw_device", "d3d11va=dx11:,vendor_id=0x8086", "-init_hw_device", "qsv=qs@dx11", "-filter_hw_device", "qs"},
 		{"-init_hw_device", "qsv=hw,child_device_type=d3d11va", "-filter_hw_device", "hw"},
 		plain,
 		{"-init_hw_device", "qsv=hw,child_device_type=dxva2", "-filter_hw_device", "hw"},
+		memory,
 	}
 }
 
@@ -118,6 +127,12 @@ func (e Encoder) InitArgs() []string {
 
 // Filter builds the -vf / -filter_complex chain (CPU filters first, then upload).
 func (e Encoder) Filter(o EncodeOpts) string {
+	return e.filter(o, len(qsvInitArgs()) > 0)
+}
+
+// filter: qsvUpload says whether a QSV device is set up to hwupload into; without
+// one the QSV encoder takes nv12 frames from system memory.
+func (e Encoder) filter(o EncodeOpts, qsvUpload bool) string {
 	var f []string
 	if o.ToneMap {
 		f = append(f, "zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",
@@ -128,7 +143,10 @@ func (e Encoder) Filter(o EncodeOpts) string {
 	}
 	switch e.Family() {
 	case "qsv":
-		f = append(f, "format=nv12", "hwupload=extra_hw_frames=64")
+		f = append(f, "format=nv12")
+		if qsvUpload {
+			f = append(f, "hwupload=extra_hw_frames=64")
+		}
 	case "vaapi":
 		f = append(f, "format=nv12", "hwupload")
 	default:
@@ -236,6 +254,12 @@ func (e *Encoders) SelfTest(ctx context.Context) []EncoderResult {
 		results[i] = EncoderResult{Encoder: enc}
 		if !strings.Contains(listed, " "+enc.Name+" ") {
 			results[i].Error = "az ffmpeg nem tartalmazza ezt az encodert"
+			results[i].Skipped = true
+			continue
+		}
+		if enc.Family() == "vaapi" && runtime.GOOS != "linux" {
+			results[i].Error = "a VAAPI csak Linuxon érhető el"
+			results[i].Skipped = true
 			continue
 		}
 		if enc.Name == "h264_qsv" && qsvProbe != nil {
@@ -295,7 +319,12 @@ func probeQSV(ctx context.Context, candidates [][]string) EncoderResult {
 }
 
 // QSVInit is the QSV device setup in use (for logs).
-func QSVInit() string { return strings.Join(qsvInitArgs(), " ") }
+func QSVInit() string {
+	if a := qsvInitArgs(); len(a) > 0 {
+		return strings.Join(a, " ")
+	}
+	return "system memory (no hwupload)"
+}
 
 func testEncoder(ctx context.Context, enc Encoder) EncoderResult {
 	return testEncoderWith(ctx, enc, enc.InitArgs())
@@ -307,14 +336,14 @@ func testEncoderWith(ctx context.Context, enc Encoder, dev []string) EncoderResu
 	opts := EncodeOpts{Bitrate: 2_000_000, Width: 1280, GOP: true}
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
 	args = append(args, dev...)
-	args = append(args, "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24", "-t", "1", "-vf", enc.Filter(opts))
+	args = append(args, "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24", "-t", "1", "-vf", enc.filter(opts, len(dev) > 0))
 	args = append(args, enc.Args(opts)...)
 	args = append(args, "-f", "null", "-")
 	t := time.Now()
 	out, err := exec.CommandContext(ctx, FFmpeg, args...).CombinedOutput()
 	r := EncoderResult{Encoder: enc, Ms: time.Since(t).Milliseconds()}
 	if err != nil {
-		msg := lastLine(string(out))
+		msg := errorSummary(string(out))
 		if ctx.Err() != nil {
 			msg = "időtúllépés (20 mp)"
 		}
