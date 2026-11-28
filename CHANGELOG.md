@@ -5,6 +5,8 @@ A kiadások részletes jegyzete: [docs/releases/](docs/releases/). Ez a fájl a 
 
 ## Kiadatlan / Unreleased
 
+## 1.1.100 – 2026-11-28
+
 - **Javítás (Windows, Intel Arc):** az Intel Arc B580 (és minden olyan gép, ahol a képkockák feltöltése a videokártyára
   nem működik) most is hardveresen kódol: a QSV-kódoló a rendszermemóriából kapja a képkockákat. A naplóban a valódi
   ffmpeg-hiba látszik az általános „Nothing was written…” sor helyett, és Windowson a VAAPI már nem jelenik meg hibaként.
